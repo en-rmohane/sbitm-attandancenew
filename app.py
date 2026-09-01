@@ -8,12 +8,22 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from flask import Flask, request, jsonify, render_template, send_file, session
+from flask import Flask, request, jsonify, render_template, send_file, session, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 from database import get_db_connection, init_db
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, 'static'),
+    static_url_path='/static',
+    template_folder=os.path.join(BASE_DIR, 'templates')
+)
 app.secret_key = 'super_secret_attendance_system_key_2026'
+
+@app.route('/static/<path:filename>')
+def custom_static(filename):
+    return send_from_directory(os.path.join(BASE_DIR, 'static'), filename)
 
 # Initialize database on start
 init_db()

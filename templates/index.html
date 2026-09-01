@@ -12,7 +12,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- SheetJS & html2pdf.js for Client-Side Excel/PDF Fallbacks -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
@@ -728,9 +728,9 @@
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/faculty.js"></script>
-  <script src="/static/js/admin.js"></script>
-  <script src="/static/js/reports.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/faculty.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/reports.js') }}"></script>
 </body>
 </html>
