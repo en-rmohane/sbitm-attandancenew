@@ -1,10 +1,37 @@
 import sqlite3
 import os
 import shutil
+import json
+import base64
+import urllib.request
+import urllib.error
+from typing import Any, List, Dict, Optional
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
-# Handle Vercel serverless read-only filesystem by copying to /tmp if deployed on Vercel
+# Helper to automatically load .env if present without needing external packages
+def _load_dotenv():
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
+_load_dotenv()
+
+TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
+TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
+
+# Handle local SQLite DB path (and /tmp copy if on Vercel and Turso is not configured)
 if os.environ.get('VERCEL'):
     TMP_DB_PATH = '/tmp/attendance.db'
     SRC_DB_PATH = os.path.join(os.path.dirname(__file__), 'attendance.db')
@@ -15,7 +42,226 @@ if os.environ.get('VERCEL'):
 else:
     DB_PATH = os.path.join(os.path.dirname(__file__), 'attendance.db')
 
+class TursoRow(dict):
+    """Row interface compatible with sqlite3.Row and dict."""
+    def __init__(self, cols: List[str], values: List[Any]):
+        super().__init__(zip(cols, values))
+        self._cols = list(cols)
+        self._values = list(values)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        if isinstance(key, int):
+            if 0 <= key < len(self._values):
+                return self._values[key]
+            return default
+        return super().get(key, default)
+
+    def keys(self):
+        return self._cols
+
+    def values(self):
+        return self._values
+
+    def items(self):
+        return zip(self._cols, self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+class TursoCursor:
+    def __init__(self, connection):
+        self.conn = connection
+        self.description = None
+        self.rowcount = -1
+        self.lastrowid = None
+        self._rows = []
+        self._row_idx = 0
+
+    def _convert_param(self, val):
+        if val is None:
+            return {"type": "null"}
+        elif isinstance(val, int):
+            return {"type": "integer", "value": str(val)}
+        elif isinstance(val, float):
+            return {"type": "float", "value": val}
+        elif isinstance(val, bytes):
+            return {"type": "blob", "base64": base64.b64encode(val).decode('utf-8')}
+        else:
+            return {"type": "text", "value": str(val)}
+
+    def _parse_value(self, cell):
+        t = cell.get("type")
+        v = cell.get("value")
+        if t == "null":
+            return None
+        elif t == "integer":
+            return int(v) if v is not None else None
+        elif t == "float":
+            return float(v) if v is not None else None
+        elif t == "blob":
+            return base64.b64decode(cell.get("base64", ""))
+        else:
+            return v
+
+    def execute(self, sql: str, params: Optional[Any] = None):
+        sql = sql.strip()
+        if not sql:
+            return self
+
+        stmt_obj = {"sql": sql}
+        if params is not None:
+            if isinstance(params, (list, tuple)):
+                stmt_obj["args"] = [self._convert_param(p) for p in params]
+            elif isinstance(params, dict):
+                stmt_obj["named_args"] = [{"name": k, "value": self._convert_param(v)} for k, v in params.items()]
+            else:
+                stmt_obj["args"] = [self._convert_param(params)]
+
+        res = self.conn._send_pipeline([{"type": "execute", "stmt": stmt_obj}])
+        exec_res = res[0].get("response", {}).get("result", {})
+        
+        cols = [c["name"] for c in exec_res.get("cols", [])]
+        raw_rows = exec_res.get("rows", [])
+        
+        parsed_rows = []
+        for r in raw_rows:
+            parsed_vals = [self._parse_value(cell) for cell in r]
+            parsed_rows.append(TursoRow(cols, parsed_vals))
+            
+        self._rows = parsed_rows
+        self._row_idx = 0
+        self.rowcount = exec_res.get("affected_row_count", len(parsed_rows))
+        
+        last_id = exec_res.get("last_insert_rowid")
+        if last_id is not None:
+            try:
+                self.lastrowid = int(last_id)
+            except (ValueError, TypeError):
+                self.lastrowid = last_id
+        else:
+            self.lastrowid = None
+
+        if cols:
+            self.description = [(col,) for col in cols]
+        else:
+            self.description = None
+
+        return self
+
+    def executemany(self, sql: str, seq_of_params):
+        if not seq_of_params:
+            return self
+
+        requests = []
+        for params in seq_of_params:
+            if isinstance(params, (list, tuple)):
+                args = [self._convert_param(p) for p in params]
+                requests.append({"type": "execute", "stmt": {"sql": sql, "args": args}})
+            elif isinstance(params, dict):
+                named_args = [{"name": k, "value": self._convert_param(v)} for k, v in params.items()]
+                requests.append({"type": "execute", "stmt": {"sql": sql, "named_args": named_args}})
+            else:
+                args = [self._convert_param(params)]
+                requests.append({"type": "execute", "stmt": {"sql": sql, "args": args}})
+
+        res = self.conn._send_pipeline(requests)
+        self.rowcount = sum(r.get("response", {}).get("result", {}).get("affected_row_count", 0) for r in res if "response" in r)
+        return self
+
+    def executescript(self, sql_script: str):
+        stmts = [s.strip() for s in sql_script.split(';') if s.strip()]
+        requests = [{"type": "execute", "stmt": {"sql": s}} for s in stmts]
+        if requests:
+            self.conn._send_pipeline(requests)
+        return self
+
+    def fetchone(self):
+        if self._row_idx < len(self._rows):
+            row = self._rows[self._row_idx]
+            self._row_idx += 1
+            return row
+        return None
+
+    def fetchall(self):
+        rows = self._rows[self._row_idx:]
+        self._row_idx = len(self._rows)
+        return rows
+
+class TursoConnection:
+    def __init__(self, db_url: str, auth_token: str):
+        if db_url.startswith("libsql://"):
+            http_url = db_url.replace("libsql://", "https://")
+        elif not db_url.startswith("http"):
+            http_url = f"https://{db_url}"
+        else:
+            http_url = db_url
+
+        if not http_url.endswith("/v2/pipeline"):
+            http_url = http_url.rstrip("/") + "/v2/pipeline"
+
+        self.pipeline_url = http_url
+        self.auth_token = auth_token
+
+    def cursor(self):
+        return TursoCursor(self)
+
+    def execute(self, sql: str, params: Optional[Any] = None):
+        cur = self.cursor()
+        return cur.execute(sql, params)
+
+    def executemany(self, sql: str, seq_of_params):
+        cur = self.cursor()
+        return cur.executemany(sql, seq_of_params)
+
+    def executescript(self, sql_script: str):
+        cur = self.cursor()
+        return cur.executescript(sql_script)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+    def _send_pipeline(self, requests: List[Dict[str, Any]]):
+        payload = {"requests": requests}
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            self.pipeline_url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.auth_token}",
+                "Content-Type": "application/json"
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res = json.loads(resp.read().decode('utf-8'))
+                results = res.get("results", [])
+                for r in results:
+                    if r.get("type") == "error":
+                        err_msg = r.get("error", {}).get("message", "Unknown Turso Error")
+                        raise Exception(f"Turso DB Error: {err_msg}")
+                return results
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8')
+            raise Exception(f"Turso HTTP {e.code} Error: {err_body}")
+
 def get_db_connection():
+    db_url = os.environ.get('TURSO_DATABASE_URL')
+    auth_token = os.environ.get('TURSO_AUTH_TOKEN')
+
+    if db_url and auth_token:
+        return TursoConnection(db_url, auth_token)
+
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -221,116 +467,75 @@ def seed_initial_data(conn):
             ("74", "TARAN YADAV", "0545EX251006", "2nd Year (CSE)", "active"),
 
             # 3rd Year (5th Sem CSE - 68 Students)
-            ("01", "AARTI RANE", "0545CS241002", "3rd Year", "active"),
-            ("02", "AASTHA SANDE", "0545CS241003", "3rd Year", "active"),
-            ("03", "AAYUSH KASARE", "0545CS241004", "3rd Year", "active"),
-            ("04", "ABHISHEK HAJARE", "0545CS241005", "3rd Year", "active"),
-            ("05", "AMAN SHIVHARE", "0545CS241007", "3rd Year", "active"),
-            ("06", "ANURAG SURYAWANSHI", "0545CS241008", "3rd Year", "active"),
-            ("07", "APURVA PARIHAR", "0545CS241009", "3rd Year", "active"),
-            ("08", "ARMAAN QURESHI", "0545CS241010", "3rd Year", "active"),
-            ("09", "ASMIT PARTE", "0545CS241011", "3rd Year", "active"),
-            ("10", "AYUSH YADAV", "0545CS241012", "3rd Year", "active"),
-            ("11", "CHAITANYA SAHU", "0545CS241014", "3rd Year", "active"),
-            ("12", "CHETANA DHOTE", "0545CS241015", "3rd Year", "active"),
-            ("13", "CHHAVI MAKODE", "0545CS241016", "3rd Year", "active"),
-            ("14", "DISHA DESHMUKH", "0545CS241017", "3rd Year", "active"),
-            ("15", "DIVYANSHU TARUDKAR", "0545CS241018", "3rd Year", "active"),
-            ("16", "EKTA DHOTE", "0545CS241019", "3rd Year", "active"),
-            ("17", "GAURANG DAHARE", "0545CS241020", "3rd Year", "active"),
-            ("18", "GAURAV DAHARE", "0545CS241021", "3rd Year", "active"),
-            ("19", "GOUTAM HARSULE", "0545CS241022", "3rd Year", "active"),
-            ("20", "HANSIKA NALLOL", "0545CS241023", "3rd Year", "active"),
-            ("21", "HARSH YADAV", "0545CS241024", "3rd Year", "active"),
-            ("22", "HEMANT MAHALE", "0545CS241025", "3rd Year", "active"),
-            ("23", "HIMANSHI UKANDE", "0545CS241026", "3rd Year", "active"),
-            ("24", "JIGYASA GAYAKWAD", "0545CS241027", "3rd Year", "active"),
-            ("25", "KALAMBE ROHIT PRAMODRAO", "0545CS241028", "3rd Year", "active"),
-            ("26", "KAPILKANT LILHORE", "0545CS241029", "3rd Year", "active"),
-            ("27", "KRISHNA MALVIYA", "0545CS241030", "3rd Year", "active"),
-            ("28", "KUSHAGRA AGRAWAL", "0545CS241031", "3rd Year", "active"),
-            ("29", "MAHAK BARASKAR", "0545CS241032", "3rd Year", "active"),
-            ("30", "MAHEK RATHORE", "0545CS241033", "3rd Year", "active"),
-            ("31", "MAYUR CHODITKAR", "0545CS241034", "3rd Year", "active"),
-            ("32", "MITALI SURYAWANSHI", "0545CS241035", "3rd Year", "active"),
-            ("33", "MONIKA GAYDHANE", "0545CS241036", "3rd Year", "active"),
-            ("34", "MUSKAN HARPODE", "0545CS241037", "3rd Year", "active"),
-            ("35", "NEMIT SONI", "0545CS241038", "3rd Year", "active"),
-            ("36", "PALAK CHOUHAN", "0545CS241039", "3rd Year", "active"),
-            ("37", "PARTE RAJKUMAR SADAN", "0545CS241040", "3rd Year", "active"),
-            ("38", "PIYUSH DAYKE", "0545CS241041", "3rd Year", "active"),
-            ("39", "PIYUSH PANSE", "0545CS241042", "3rd Year", "active"),
-            ("40", "PRACHI GUPTA", "0545CS241043", "3rd Year", "active"),
-            ("41", "PRANAV KAWADKAR", "0545CS241044", "3rd Year", "active"),
-            ("42", "PRASHANT BARASKAR", "0545CS241045", "3rd Year", "active"),
-            ("43", "PRATIKSHA", "0545CS241046", "3rd Year", "active"),
-            ("44", "PRINCI PAWAR", "0545CS241047", "3rd Year", "active"),
-            ("45", "PRIYANSHI CHOUKSEY", "0545CS241048", "3rd Year", "active"),
-            ("46", "RAJ GAJANAN KASLIKAR", "0545CS241049", "3rd Year", "active"),
-            ("47", "REHAN ALI", "0545CS241050", "3rd Year", "active"),
-            ("48", "RISHITA TAWARE", "0545CS241051", "3rd Year", "active"),
-            ("49", "RIYANSHI KOKNE", "0545CS241052", "3rd Year", "active"),
-            ("50", "RUDRARAJ WAGH", "0545CS241053", "3rd Year", "active"),
-            ("51", "SAKSHAM VERMA", "0545CS241054", "3rd Year", "active"),
-            ("52", "SALMAN KHAN", "0545CS241055", "3rd Year", "active"),
-            ("53", "SALONI BARANGE", "0545CS241056", "3rd Year", "active"),
-            ("54", "SALONI GIRI", "0545CS241057", "3rd Year", "active"),
-            ("55", "SANDEEP YADAV", "0545CS241058", "3rd Year", "active"),
-            ("56", "SHAIKH MOHD ANAS NAWAZ", "0545CS241059", "3rd Year", "active"),
-            ("57", "SHIVAM SAHU", "0545CS241060", "3rd Year", "active"),
-            ("58", "SHRASHTI ANGHORE", "0545CS241061", "3rd Year", "active"),
-            ("59", "SHUBHAM RAVANDHE", "0545CS241062", "3rd Year", "active"),
-            ("60", "SUDEEP BUWADE", "0545CS241064", "3rd Year", "active"),
-            ("61", "SUMIT CHOUHAN", "0545CS241065", "3rd Year", "active"),
-            ("62", "TUSHAR PAWAR", "0545CS241066", "3rd Year", "active"),
-            ("63", "VAISHNAVI SOLANKI", "0545CS241067", "3rd Year", "active"),
-            ("64", "VANSHIKA KHANDWE", "0545CS241068", "3rd Year", "active"),
-            ("65", "VISHAKHA FARKADE", "0545CS241069", "3rd Year", "active"),
-            ("66", "VISHAL KAR", "0545CS241070", "3rd Year", "active"),
-            ("67", "VIVEK VERMA", "0545CS241071", "3rd Year", "active"),
-            ("68", "YASHIKA DANGE", "0545CS241072", "3rd Year", "active"),
+            ("01", "AARTI RANE", "0545CS241002", "3rd Year (CSE)", "active"),
+            ("02", "AASTHA SANDE", "0545CS241003", "3rd Year (CSE)", "active"),
+            ("03", "AAYUSH KASARE", "0545CS241004", "3rd Year (CSE)", "active"),
+            ("04", "ABHISHEK HAJARE", "0545CS241005", "3rd Year (CSE)", "active"),
+            ("05", "AMAN SHIVHARE", "0545CS241007", "3rd Year (CSE)", "active"),
+            ("06", "ANURAG SURYAWANSHI", "0545CS241008", "3rd Year (CSE)", "active"),
+            ("07", "APURVA PARIHAR", "0545CS241009", "3rd Year (CSE)", "active"),
+            ("08", "ARMAAN QURESHI", "0545CS241010", "3rd Year (CSE)", "active"),
+            ("09", "ASMIT PARTE", "0545CS241011", "3rd Year (CSE)", "active"),
+            ("10", "AYUSH YADAV", "0545CS241012", "3rd Year (CSE)", "active"),
+            ("11", "CHAITANYA SAHU", "0545CS241014", "3rd Year (CSE)", "active"),
+            ("12", "CHETANA DHOTE", "0545CS241015", "3rd Year (CSE)", "active"),
+            ("13", "CHHAVI MAKODE", "0545CS241016", "3rd Year (CSE)", "active"),
+            ("14", "DISHA DESHMUKH", "0545CS241017", "3rd Year (CSE)", "active"),
+            ("15", "DIVYANSHU TARUDKAR", "0545CS241018", "3rd Year (CSE)", "active"),
+            ("16", "EKTA DHOTE", "0545CS241019", "3rd Year (CSE)", "active"),
+            ("17", "GAURANG DAHARE", "0545CS241020", "3rd Year (CSE)", "active"),
+            ("18", "GAURAV DAHARE", "0545CS241021", "3rd Year (CSE)", "active"),
+            ("19", "GOUTAM HARSULE", "0545CS241022", "3rd Year (CSE)", "active"),
+            ("20", "HANSIKA NALLOL", "0545CS241023", "3rd Year (CSE)", "active"),
+            ("21", "HARSH YADAV", "0545CS241024", "3rd Year (CSE)", "active"),
+            ("22", "HEMANT MAHALE", "0545CS241025", "3rd Year (CSE)", "active"),
+            ("23", "HIMANSHI UKANDE", "0545CS241026", "3rd Year (CSE)", "active"),
+            ("24", "JIGYASA GAYAKWAD", "0545CS241027", "3rd Year (CSE)", "active"),
+            ("25", "KALAMBE ROHIT PRAMODRAO", "0545CS241028", "3rd Year (CSE)", "active"),
+            ("26", "KAPILKANT LILHORE", "0545CS241029", "3rd Year (CSE)", "active"),
+            ("27", "KRISHNA MALVIYA", "0545CS241030", "3rd Year (CSE)", "active"),
+            ("28", "KUSHAGRA AGRAWAL", "0545CS241031", "3rd Year (CSE)", "active"),
+            ("29", "MAHAK BARASKAR", "0545CS241032", "3rd Year (CSE)", "active"),
+            ("30", "MAHEK RATHORE", "0545CS241033", "3rd Year (CSE)", "active"),
+            ("31", "MAYUR CHODITKAR", "0545CS241034", "3rd Year (CSE)", "active"),
+            ("32", "MITALI SURYAWANSHI", "0545CS241035", "3rd Year (CSE)", "active"),
+            ("33", "MONIKA GAYDHANE", "0545CS241036", "3rd Year (CSE)", "active"),
+            ("34", "MUSKAN HARPODE", "0545CS241037", "3rd Year (CSE)", "active"),
+            ("35", "NEMIT SONI", "0545CS241038", "3rd Year (CSE)", "active"),
+            ("36", "PALAK CHOUHAN", "0545CS241039", "3rd Year (CSE)", "active"),
+            ("37", "PARTE RAJKUMAR SADAN", "0545CS241040", "3rd Year (CSE)", "active"),
+            ("38", "PIYUSH DAYKE", "0545CS241041", "3rd Year (CSE)", "active"),
+            ("39", "PIYUSH PANSE", "0545CS241042", "3rd Year (CSE)", "active"),
+            ("40", "PRACHI GUPTA", "0545CS241043", "3rd Year (CSE)", "active"),
+            ("41", "PRANAV KAWADKAR", "0545CS241044", "3rd Year (CSE)", "active"),
+            ("42", "PRASHANT BARASKAR", "0545CS241045", "3rd Year (CSE)", "active"),
+            ("43", "PRATIKSHA", "0545CS241046", "3rd Year (CSE)", "active"),
+            ("44", "PRINCI PAWAR", "0545CS241047", "3rd Year (CSE)", "active"),
+            ("45", "PRIYANSHI CHOUKSEY", "0545CS241048", "3rd Year (CSE)", "active"),
+            ("46", "RAJ GAJANAN KASLIKAR", "0545CS241049", "3rd Year (CSE)", "active"),
+            ("47", "REHAN ALI", "0545CS241050", "3rd Year (CSE)", "active"),
+            ("48", "RISHITA TAWARE", "0545CS241051", "3rd Year (CSE)", "active"),
+            ("49", "RIYANSHI KOKNE", "0545CS241052", "3rd Year (CSE)", "active"),
+            ("50", "RUDRARAJ WAGH", "0545CS241053", "3rd Year (CSE)", "active"),
+            ("51", "SAKSHAM VERMA", "0545CS241054", "3rd Year (CSE)", "active"),
+            ("52", "SALMAN KHAN", "0545CS241055", "3rd Year (CSE)", "active"),
+            ("53", "SALONI BARANGE", "0545CS241056", "3rd Year (CSE)", "active"),
+            ("54", "SALONI GIRI", "0545CS241057", "3rd Year (CSE)", "active"),
+            ("55", "SANDEEP YADAV", "0545CS241058", "3rd Year (CSE)", "active"),
+            ("56", "SHAIKH MOHD ANAS NAWAZ", "0545CS241059", "3rd Year (CSE)", "active"),
+            ("57", "SHIVAM SAHU", "0545CS241060", "3rd Year (CSE)", "active"),
+            ("58", "SHRASHTI ANGHORE", "0545CS241061", "3rd Year (CSE)", "active"),
+            ("59", "SHUBHAM RAVANDHE", "0545CS241062", "3rd Year (CSE)", "active"),
+            ("60", "SUDEEP BUWADE", "0545CS241064", "3rd Year (CSE)", "active"),
+            ("61", "SUMIT CHOUHAN", "0545CS241065", "3rd Year (CSE)", "active"),
+            ("62", "TUSHAR PAWAR", "0545CS241066", "3rd Year (CSE)", "active"),
+            ("63", "VAISHNAVI SOLANKI", "0545CS241067", "3rd Year (CSE)", "active"),
+            ("64", "VANSHIKA KHANDWE", "0545CS241068", "3rd Year (CSE)", "active"),
+            ("65", "VISHAKHA FARKADE", "0545CS241069", "3rd Year (CSE)", "active"),
+            ("66", "VISHAL KAR", "0545CS241070", "3rd Year (CSE)", "active"),
+            ("67", "VIVEK VERMA", "0545CS241071", "3rd Year (CSE)", "active"),
+            ("68", "YASHIKA DANGE", "0545CS241072", "3rd Year (CSE)", "active"),
 
-            # 4th Year (7th Sem CSE - 58 Students)
-            ("01", "AAKASH PAWAR", "0545CS231001", "4th Year", "active"),
-            ("02", "ANJALI MALVIYA", "0545CS231002", "4th Year", "active"),
-            ("03", "ANJALI SONI", "0545CS231003", "4th Year", "active"),
-            ("04", "ANKIT KUMAR", "0545CS231004", "4th Year", "active"),
-            ("05", "ASHVINI GOHITE", "0545CS231005", "4th Year", "active"),
-            ("06", "BHARTI BISNURKAR", "0545CS231006", "4th Year", "active"),
-            ("07", "BHUVAN YADAV", "0545CS231007", "4th Year", "active"),
-            ("08", "DHANSHREE GALPHAT", "0545CS231008", "4th Year", "active"),
-            ("09", "DHANSHRI WANKHADE", "0545CS231009", "4th Year", "active"),
-            ("10", "DHYANVI RAGHUVANSHI", "0545CS231010", "4th Year", "active"),
-            ("11", "DIPANSHU SURYAWANSHI", "0545CS231011", "4th Year", "active"),
-            ("12", "DISHA PAWAR", "0545CS231012", "4th Year", "active"),
-            ("13", "DIVYANSHI BARPETE", "0545CS231014", "4th Year", "active"),
-            ("14", "HARSHAD WANODE", "0545CS231016", "4th Year", "active"),
-            ("15", "HIMANSHU CHOUDHARY", "0545CS231017", "4th Year", "active"),
-            ("16", "HIMANSHU NAGLE", "0545CS231018", "4th Year", "active"),
-            ("17", "JITENDRA NAGVANSHI", "0545CS231019", "4th Year", "active"),
-            ("18", "KARAN DONGRE", "0545CS231020", "4th Year", "active"),
-            ("19", "KHUSHI WANJARE", "0545CS231021", "4th Year", "active"),
-            ("20", "KULDEEP BALPANDE", "0545CS231022", "4th Year", "active"),
-            ("21", "KUMKUM PARIHAR", "0545CS231023", "4th Year", "active"),
-            ("22", "KUNAL ASREKER", "0545CS231024", "4th Year", "active"),
-            ("23", "KUNAL PATWARI", "0545CS231025", "4th Year", "active"),
-            ("24", "MEEZA KHAN", "0545CS231026", "4th Year", "active"),
-            ("25", "MUSKAN SAHU", "0545CS231027", "4th Year", "active"),
-            ("26", "NIKITA BARASKAR", "0545CS231028", "4th Year", "active"),
-            ("27", "NISHA", "0545CS231029", "4th Year", "active"),
-            ("28", "PAWAN JHAGEKAR", "0545CS231030", "4th Year", "active"),
-            ("29", "PAYAL JHADE", "0545CS231031", "4th Year", "active"),
-            ("30", "PIYUSH KADU", "0545CS231032", "4th Year", "active"),
-            ("31", "PRAYUSH BELE", "0545CS231033", "4th Year", "active"),
-            ("32", "PRIYA WANJARE", "0545CS231034", "4th Year", "active"),
-            ("33", "PRIYANKA UGHADE", "0545CS231035", "4th Year", "active"),
-            ("34", "PRIYANSHU ASHOK PAWAR", "0545CS231036", "4th Year", "active"),
-            ("35", "PRIYANSHU RATHORE", "0545CS231037", "4th Year", "active"),
-            ("36", "RITIKA MUKESH YADAV", "0545CS231039", "4th Year", "active"),
-            ("37", "RITIKA PAL", "0545CS231040", "4th Year", "active"),
-            ("38", "ROHAN GHORE", "0545CS231041", "4th Year", "active"),
-            ("39", "SAKSHI DESHMUKH", "0545CS231042", "4th Year", "active"),
-            ("40", "SAKSHI KUMBHARE", "0545CS231043", "4th Year", "active"),
             # 4th Year (7th Sem CSE - 58 Students)
             ("01", "AAKASH PAWAR", "0545CS231001", "4th Year (CSE)", "active"),
             ("02", "ANJALI MALVIYA", "0545CS231002", "4th Year (CSE)", "active"),
