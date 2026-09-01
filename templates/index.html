@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Student Attendance Management System</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS & html2pdf.js for Client-Side Excel/PDF Fallbacks -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- 1. LOGIN SCREEN -->
+  <div id="loginScreen" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="brand-logo">
+          <i data-lucide="graduation-cap" class="brand-icon"></i>
+        </div>
+        <h1 class="brand-title">EduAttend Pro</h1>
+        <p class="brand-subtitle">Student Attendance Management Portal</p>
+      </div>
+
+      <div class="quick-roles-pills">
+        <button type="button" class="role-pill-btn active" onclick="setQuickLogin('admin')">
+          <i data-lucide="shield-check"></i> Admin
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('ravi')">
+          <i data-lucide="user"></i> Prof. Ravi (2nd Yr)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('khushbu')">
+          <i data-lucide="user"></i> Prof. Khushbu (3rd Yr)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('jitendra')">
+          <i data-lucide="user"></i> Prof. Jitendra (4th Yr)
+        </button>
+      </div>
+
+      <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="loginUsername">Username / ID</label>
+          <div class="input-with-icon">
+            <i data-lucide="user-check"></i>
+            <input type="text" id="loginUsername" placeholder="e.g. admin or prof.ravi" required autofocus>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div class="input-with-icon">
+            <i data-lucide="lock"></i>
+            <input type="password" id="loginPassword" placeholder="••••••••" required>
+          </div>
+        </div>
+
+        <button type="submit" id="btnLogin" class="btn btn-primary btn-block">
+          <span>Sign In to Dashboard</span>
+          <i data-lucide="arrow-right"></i>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        <div class="credentials-hint">
+          <p><strong>Login Credentials:</strong></p>
+          <div class="hint-grid" style="grid-template-columns: 1fr; gap: 6px; font-size: 0.8rem;">
+            <div><span class="badge badge-indigo">Admin:</span> <code>admin</code> / <code>admin123</code></div>
+            <div><span class="badge badge-emerald">2nd Yr (Prof. Ravi):</span> <code>prof.ravi</code> / <code>ravi123</code></div>
+            <div><span class="badge badge-emerald">3rd Yr (Prof. Khushbu):</span> <code>prof.khushbu</code> / <code>khushbu123</code></div>
+            <div><span class="badge badge-emerald">4th Yr (Prof. Jitendra):</span> <code>prof.jitendra</code> / <code>jitendra123</code></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. MAIN APPLICATION APP WRAPPER -->
+  <div id="appScreen" class="app-layout" style="display: none;">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button id="mobileMenuToggle" class="mobile-toggle-btn" onclick="toggleMobileNav()">
+          <i data-lucide="menu"></i>
+        </button>
+        <div class="brand-mini">
+          <i data-lucide="graduation-cap" class="brand-icon-mini"></i>
+          <span class="brand-name-mini">EduAttend</span>
+        </div>
+        <div id="userYearBadge" class="header-year-badge">
+          <!-- Dynamic Year Badge -->
+        </div>
+      </div>
+
+      <!-- Desktop Nav Tabs -->
+      <nav id="desktopNav" class="desktop-nav">
+        <!-- Injected via JavaScript based on Role -->
+      </nav>
+
+      <div class="header-right">
+        <div class="user-profile-badge">
+          <div class="avatar-circle" id="userAvatar">A</div>
+          <div class="user-meta">
+            <span class="user-name" id="headerUserName">Administrator</span>
+            <span class="user-role-label" id="headerUserRole">Admin</span>
+          </div>
+        </div>
+        <button class="btn-logout" onclick="handleLogout()" title="Logout">
+          <i data-lucide="log-out"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Mobile Drawer Navigation -->
+    <div id="mobileDrawer" class="mobile-drawer">
+      <div class="drawer-header">
+        <span class="drawer-title">Navigation</span>
+        <button class="btn-icon" onclick="toggleMobileNav()"><i data-lucide="x"></i></button>
+      </div>
+      <nav id="mobileNavLinks" class="drawer-links">
+        <!-- Injected dynamically -->
+      </nav>
+    </div>
+    <div id="drawerOverlay" class="drawer-overlay" onclick="toggleMobileNav()"></div>
+
+    <!-- Main Dynamic Content Container -->
+    <main class="main-content">
+      
+      <!-- ================= FACULTY VIEW: MARK ATTENDANCE ================= -->
+      <section id="facultyMarkView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title" id="facultyYearHeader">Daily Attendance Portal</h2>
+            <p class="page-desc">Mark student attendance for the selected class and date.</p>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="date-selector-box" id="facultyClassSelectBox">
+              <label for="facultyClassSelect"><i data-lucide="book-open"></i> Class / Branch</label>
+              <select id="facultyClassSelect" class="input-select" style="padding: 6px 12px; font-size: 14px; min-width: 170px;" onchange="onFacultyClassChange()">
+                <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+                <option value="4th Year (CSE)">4th Year (CSE)</option>
+                <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+              </select>
+            </div>
+            <div class="date-selector-box">
+              <label for="attendanceDateInput"><i data-lucide="calendar"></i> Attendance Date</label>
+              <input type="date" id="attendanceDateInput" class="input-date" onchange="onAttendanceDateChange()">
+            </div>
+          </div>
+        </div>
+
+        <!-- Date Warning Banners (Sunday, Holiday, Already Submitted) -->
+        <div id="dateAlertBox" class="alert-box" style="display: none;"></div>
+
+        <!-- Attendance Toolbar -->
+        <div class="action-card attendance-control-card" id="attendanceControls">
+          <div class="stats-counter-group">
+            <div class="count-pill">Total: <b id="totalStudentCount">0</b></div>
+            <div class="count-pill pill-present">Present: <b id="presentCount">0</b></div>
+            <div class="count-pill pill-absent">Absent: <b id="absentCount">0</b></div>
+          </div>
+
+          <div class="quick-batch-btns" id="batchActionButtons">
+            <button type="button" class="btn btn-outline-success" onclick="markAll('Present')">
+              <i data-lucide="check-circle-2"></i> Mark All Present
+            </button>
+            <button type="button" class="btn btn-outline-danger" onclick="markAll('Absent')">
+              <i data-lucide="x-circle"></i> Mark All Absent
+            </button>
+          </div>
+        </div>
+
+        <!-- Student Attendance Marking List -->
+        <div class="attendance-table-container">
+          <table class="data-table attendance-table" id="attendanceTable">
+            <thead>
+              <tr>
+                <th style="width: 80px;">Roll No</th>
+                <th>Student Name</th>
+                <th class="hide-mobile" style="width: 140px;">Enrollment</th>
+                <th style="width: 220px; text-align: center;">Attendance Action</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceTableBody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Floating or Sticky Submit Action Bar -->
+        <div class="submit-action-bar" id="submitActionBar">
+          <div class="submission-summary">
+            <span id="submitSummaryText">Ready to record attendance.</span>
+          </div>
+          <button type="button" id="btnSubmitAttendance" class="btn btn-success btn-lg" onclick="submitAttendanceData()">
+            <i data-lucide="check"></i>
+            <span>Submit Attendance</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ================= FACULTY VIEW: MY SUBMISSIONS ================= -->
+      <section id="facultyHistoryView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">My Submitted Attendance</h2>
+            <p class="page-desc">History of all attendance submissions for your assigned class.</p>
+          </div>
+          <button class="btn btn-primary" onclick="switchView('faculty-mark')">
+            <i data-lucide="plus"></i> Take Today's Attendance
+          </button>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Class / Year</th>
+                  <th>Submitted At</th>
+                  <th>Present</th>
+                  <th>Absent</th>
+                  <th>Total</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="facultyHistoryTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ADMIN VIEW: DASHBOARD ================= -->
+      <section id="adminDashboardView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Admin Overview Dashboard</h2>
+            <p class="page-desc">Live attendance status and college-wide student statistics.</p>
+          </div>
+          <div class="dashboard-date-tag">
+            <i data-lucide="calendar"></i> <span id="dashTodayDate">Today</span>
+          </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <!-- Metric KPI Cards -->
+        <div class="kpi-grid" id="dashKpiGrid">
+          <div class="kpi-card card-total">
+            <div class="kpi-icon"><i data-lucide="users"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Total Active Students</span>
+              <h3 class="kpi-val" id="dashTotalStudents">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card card-year2">
+            <div class="kpi-icon"><i data-lucide="book-open"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">2nd Year (CSE)</span>
+              <h3 class="kpi-val" id="dash2ndYearStudents">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card card-year3">
+            <div class="kpi-icon"><i data-lucide="book-open"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">3rd Year (CSE)</span>
+              <h3 class="kpi-val" id="dash3rdYearStudents">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card card-year4">
+            <div class="kpi-icon"><i data-lucide="book-open"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">4th Year (CSE)</span>
+              <h3 class="kpi-val" id="dash4thYearStudents">0</h3>
+            </div>
+          </div>
+          <div class="kpi-card card-year2">
+            <div class="kpi-icon"><i data-lucide="brain"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">4th Year (AI-DS)</span>
+              <h3 class="kpi-val" id="dash4thAidsStudents">0</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- Today's Status Banner Cards -->
+        <h3 class="section-subtitle"><i data-lucide="clock"></i> Today's Attendance Status</h3>
+        <div class="today-status-grid" id="todayStatusCards">
+          <!-- Injected dynamically -->
+        </div>
+
+        <!-- Recent Submissions Table -->
+        <div class="card recent-subs-card">
+          <div class="card-header-clean">
+            <h3 class="card-title"><i data-lucide="history"></i> Recent Attendance Submissions</h3>
+            <button class="btn btn-outline btn-sm" onclick="loadAdminDashboard()">
+              <i data-lucide="refresh-cw"></i> Refresh
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Class / Year</th>
+                  <th>Attendance Date</th>
+                  <th>Submitted By</th>
+                  <th>Submission Time</th>
+                  <th>Students</th>
+                  <th>Present / Absent</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="dashRecentSubsTable">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ADMIN VIEW: STUDENTS MANAGEMENT ================= -->
+      <section id="adminStudentsView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Student Management</h2>
+            <p class="page-desc">View, add, edit, delete students or import via Excel/CSV.</p>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-outline" onclick="openImportStudentsModal()">
+              <i data-lucide="upload"></i> Import Excel / CSV
+            </button>
+            <button class="btn btn-primary" onclick="openAddStudentModal()">
+              <i data-lucide="user-plus"></i> Add New Student
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="card filter-card">
+          <div class="filter-flex">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="studentSearchInput" placeholder="Search by name, roll no, or enrollment..." oninput="filterStudentsList()">
+            </div>
+            <div class="filter-controls">
+              <select id="studentYearFilter" class="input-select" onchange="filterStudentsList()">
+                <option value="">All Classes & Branches</option>
+                <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+                <option value="4th Year (CSE)">4th Year (CSE)</option>
+                <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+              </select>
+              <select id="studentStatusFilter" class="input-select" onchange="filterStudentsList()">
+                <option value="">All Statuses</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Student Table -->
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 80px;">Roll No</th>
+                  <th>Student Name</th>
+                  <th>Enrollment No</th>
+                  <th>Year / Class</th>
+                  <th>Status</th>
+                  <th style="width: 140px; text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="studentsTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ADMIN VIEW: FACULTY MANAGEMENT ================= -->
+      <section id="adminFacultyView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Faculty Assignment Management</h2>
+            <p class="page-desc">Faculty members, each dedicated to an academic year/branch.</p>
+          </div>
+        </div>
+
+        <div class="faculty-cards-grid" id="facultyCardsGrid">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+      <!-- ================= ADMIN VIEW: HOLIDAY MANAGEMENT ================= -->
+      <section id="adminHolidaysView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Holiday & Leave Management</h2>
+            <p class="page-desc">Configure college holidays and non-working days. (Saturdays and Sundays are automatically excluded).</p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddHolidayModal()">
+            <i data-lucide="calendar-plus"></i> Add Holiday / Leave
+          </button>
+        </div>
+
+        <div class="holidays-grid">
+          <!-- Holiday List -->
+          <div class="card">
+            <div class="card-header-clean">
+              <h3 class="card-title"><i data-lucide="calendar"></i> Configured Holidays & Non-Working Days</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Reason / Occasion</th>
+                    <th style="width: 100px; text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="holidaysTableBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Holiday Information Box -->
+          <div class="card info-box-card">
+            <h4 class="info-title"><i data-lucide="info"></i> Automatic Exclusion Rules</h4>
+            <ul class="info-list">
+              <li><strong>Saturdays & Sundays:</strong> Every Saturday and Sunday is automatically treated as a college holiday / non-working day.</li>
+              <li><strong>College Holidays:</strong> Dates marked as holidays are strictly excluded from all percentage calculations.</li>
+              <li><strong>Formula:</strong> <code>Attendance % = Present / (Present + Absent) × 100</code></li>
+              <li>Holidays and non-working days will never count as absent.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ATTENDANCE REPORTS (15-Day / 30-Day / Custom) ================= -->
+      <section id="reportsView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Attendance Reports & Matrix</h2>
+            <p class="page-desc">Generate 15-day, 30-day, or custom date-range matrix reports with holiday/weekend (Sat & Sun) exclusions.</p>
+          </div>
+          <div class="export-btn-group">
+            <button class="btn btn-outline" onclick="printReport()"><i data-lucide="printer"></i> Print</button>
+            <button class="btn btn-outline-success" onclick="exportToExcel()"><i data-lucide="file-spreadsheet"></i> Export Excel</button>
+            <button class="btn btn-outline-danger" onclick="exportToPDF()"><i data-lucide="file-text"></i> Export PDF</button>
+          </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="card report-filter-card">
+          <div class="report-filters-grid">
+            <div class="filter-item">
+              <label for="reportYearSelect">Class / Branch</label>
+              <select id="reportYearSelect" class="input-select" onchange="fetchReportData()">
+                <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+                <option value="4th Year (CSE)">4th Year (CSE)</option>
+                <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+              </select>
+            </div>
+
+            <div class="filter-item">
+              <label>Quick Presets</label>
+              <div class="preset-btn-group">
+                <button type="button" id="btnPresetSession" class="btn btn-preset active" onclick="setReportPreset('session')">Session (From 31 Aug)</button>
+                <button type="button" id="btnPreset15" class="btn btn-preset" onclick="setReportPreset('15')">Last 15 Days</button>
+                <button type="button" id="btnPreset30" class="btn btn-preset" onclick="setReportPreset('30')">Last 30 Days</button>
+                <button type="button" id="btnPresetCustom" class="btn btn-preset" onclick="setReportPreset('custom')">Custom Range</button>
+              </div>
+            </div>
+
+            <div class="filter-item custom-date-item" id="customDateRangeBox" style="display: none;">
+              <label>Start Date</label>
+              <input type="date" id="reportStartDate" class="input-date" onchange="fetchReportData()">
+            </div>
+
+            <div class="filter-item custom-date-item" id="customDateRangeEndBox" style="display: none;">
+              <label>End Date</label>
+              <input type="date" id="reportEndDate" class="input-date" onchange="fetchReportData()">
+            </div>
+
+            <div class="filter-item filter-btn-box">
+              <button class="btn btn-primary" onclick="fetchReportData()">
+                <i data-lucide="sliders"></i> Generate Report
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report Printable Area Container -->
+        <div id="printableReportArea" class="card printable-area">
+          <div class="report-header-banner">
+            <div class="report-institute">
+              <h3>STUDENT ATTENDANCE REPORT</h3>
+              <p class="report-meta-line" id="reportHeaderMeta">Class: 2nd Year (CSE) | Range: 17 Aug 2026 to 31 Aug 2026</p>
+            </div>
+            <div class="report-stats-badge">
+              <div class="badge-item">
+                <span class="lbl">Working Days:</span>
+                <b id="reportTotalWorkingDays">0</b>
+              </div>
+              <div class="badge-item">
+                <span class="lbl">Class Avg %:</span>
+                <b id="reportClassAvgPct">0.0%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Attendance Matrix Table -->
+          <div class="matrix-table-wrapper">
+            <table class="data-table matrix-table" id="reportMatrixTable">
+              <thead id="reportMatrixHeader">
+                <!-- Rendered dynamically -->
+              </thead>
+              <tbody id="reportMatrixBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- 1. Add / Edit Student Modal -->
+  <div id="studentModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="studentModalTitle">Add New Student</h3>
+        <button class="btn-icon" onclick="closeStudentModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="studentForm" onsubmit="handleSaveStudent(event)">
+        <input type="hidden" id="studentEditId" value="">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="modalStudentRoll">Roll Number *</label>
+            <input type="text" id="modalStudentRoll" class="input-text" placeholder="e.g. 01, 15" required>
+          </div>
+          <div class="form-group">
+            <label for="modalStudentName">Student Full Name *</label>
+            <input type="text" id="modalStudentName" class="input-text" placeholder="e.g. Rahul Kumar" required>
+          </div>
+          <div class="form-group">
+            <label for="modalStudentEnrollment">Enrollment Number (Optional)</label>
+            <input type="text" id="modalStudentEnrollment" class="input-text" placeholder="e.g. EN202401">
+          </div>
+          <div class="form-group">
+            <label for="modalStudentYear">Assigned Class / Branch *</label>
+            <select id="modalStudentYear" class="input-select" required>
+              <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+              <option value="4th Year (CSE)">4th Year (CSE)</option>
+              <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modalStudentStatus">Status</label>
+            <select id="modalStudentStatus" class="input-select">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeStudentModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Import Students Excel/CSV Modal -->
+  <div id="importModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Bulk Import Students</h3>
+        <button class="btn-icon" onclick="closeImportModal()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="import-help">
+          Upload an <code>.xlsx</code> or <code>.csv</code> file with columns: <strong>Roll No</strong>, <strong>Student Name</strong>, <strong>Year / Branch</strong>, and optional <strong>Enrollment No</strong>.
+        </p>
+
+        <div class="file-upload-dropzone" onclick="document.getElementById('importFileInput').click()">
+          <i data-lucide="file-up" class="dropzone-icon"></i>
+          <span id="importFileName">Click or drop Excel / CSV file here</span>
+          <input type="file" id="importFileInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="onImportFileSelected(event)">
+        </div>
+
+        <div class="sample-download-row">
+          <button type="button" class="btn btn-outline btn-xs" onclick="downloadSampleCSV()">
+            <i data-lucide="download"></i> Download Sample CSV Template
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeImportModal()">Cancel</button>
+        <button type="button" id="btnUploadStudents" class="btn btn-primary" onclick="uploadStudentsFile()">Upload & Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Edit Faculty Modal -->
+  <div id="facultyModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Faculty Details</h3>
+        <button class="btn-icon" onclick="closeFacultyModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="facultyForm" onsubmit="handleSaveFaculty(event)">
+        <input type="hidden" id="facultyEditId" value="">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="modalFacultyName">Faculty Full Name *</label>
+            <input type="text" id="modalFacultyName" class="input-text" required>
+          </div>
+          <div class="form-group">
+            <label for="modalFacultyEmail">Email Address *</label>
+            <input type="email" id="modalFacultyEmail" class="input-text" required>
+          </div>
+          <div class="form-group">
+            <label for="modalFacultyPhone">Phone Number</label>
+            <input type="text" id="modalFacultyPhone" class="input-text">
+          </div>
+          <div class="form-group">
+            <label for="modalFacultyYear">Assigned Class / Branch *</label>
+            <select id="modalFacultyYear" class="input-select" required>
+              <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+              <option value="4th Year (CSE)">4th Year (CSE)</option>
+              <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modalFacultyPass">Change Password (leave blank to keep current)</label>
+            <input type="password" id="modalFacultyPass" class="input-text" placeholder="••••••••">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeFacultyModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Faculty</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. Add Holiday Modal -->
+  <div id="holidayModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Add College Holiday / Leave</h3>
+        <button class="btn-icon" onclick="closeHolidayModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="holidayForm" onsubmit="handleSaveHoliday(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="modalHolidayDate">Holiday Date *</label>
+            <input type="date" id="modalHolidayDate" class="input-date" required>
+          </div>
+          <div class="form-group">
+            <label for="modalHolidayReason">Reason / Holiday Name *</label>
+            <input type="text" id="modalHolidayReason" class="input-text" placeholder="e.g. Gandhi Jayanti, College Fest" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeHolidayModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Holiday</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 5. Edit Attendance Detail Modal (Admin only) -->
+  <div id="attendanceEditModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="attendanceEditModalTitle">Edit Attendance Records</h3>
+          <p class="modal-subtitle" id="attendanceEditModalSubtitle">2nd Year - 31 Aug 2026</p>
+        </div>
+        <button class="btn-icon" onclick="closeAttendanceEditModal()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editAttendanceId" value="">
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Roll No</th>
+                <th>Student Name</th>
+                <th style="text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceEditTableBody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeAttendanceEditModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveEditedAttendance()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/faculty.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script src="/static/js/reports.js"></script>
+</body>
+</html>
