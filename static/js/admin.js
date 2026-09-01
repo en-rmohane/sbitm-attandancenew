@@ -476,7 +476,18 @@ async function openAttendanceEditModal(attendanceId, year, date) {
   try {
     const res = await fetch(`/api/admin/attendance-detail/${attendanceId}`);
     const data = await res.json();
+    
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">${data.error || 'Failed to load attendance detail'}</td></tr>`;
+      showToast(data.error || 'Failed to load attendance detail', 'error');
+      return;
+    }
+
     const records = data.records || [];
+    if (records.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--slate-500);">No student records found for this attendance session.</td></tr>`;
+      return;
+    }
 
     tbody.innerHTML = records.map(r => `
       <tr>
@@ -491,6 +502,7 @@ async function openAttendanceEditModal(attendanceId, year, date) {
       </tr>
     `).join('');
   } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">Error loading attendance details. Please try again.</td></tr>`;
     showToast('Failed to load attendance detail', 'error');
   }
 }
