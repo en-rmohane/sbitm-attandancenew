@@ -794,7 +794,7 @@ def update_attendance_detail(attendance_id):
 def generate_report_data(conn, year, start_date_str, end_date_str):
     """
     Computes working dates (excluding Sundays & Holidays) and generates the full matrix.
-    Attendance % = Present / (Present + Absent) * 100
+    Attendance % = (Present Count / Total Working Days) * 100
     """
     working_dates = get_working_dates(conn, start_date_str, end_date_str)
     cursor = conn.cursor()
@@ -808,6 +808,9 @@ def generate_report_data(conn, year, start_date_str, end_date_str):
     """, (year,))
     students = [dict(r) for r in cursor.fetchall()]
 
+    total_working_days = len(working_dates)
+    total_students_count = len(students)
+
     if not working_dates or not students:
         return {
             'year': year,
@@ -816,8 +819,8 @@ def generate_report_data(conn, year, start_date_str, end_date_str):
             'working_dates': working_dates,
             'students_report': [],
             'summary': {
-                'total_working_days': len(working_dates),
-                'total_students': len(students),
+                'total_working_days': total_working_days,
+                'total_students': total_students_count,
                 'class_average_percentage': 0.0
             }
         }
@@ -856,9 +859,8 @@ def generate_report_data(conn, year, start_date_str, end_date_str):
             elif st == 'Absent':
                 absent_count += 1
 
-        total_marked = present_count + absent_count
-        if total_marked > 0:
-            pct = round((present_count / total_marked) * 100, 2)
+        if total_working_days > 0:
+            pct = round((present_count / total_working_days) * 100, 2)
         else:
             pct = 0.0
 
@@ -873,12 +875,12 @@ def generate_report_data(conn, year, start_date_str, end_date_str):
             'dates': date_records,
             'present_count': present_count,
             'absent_count': absent_count,
-            'total_conducted': total_marked,
+            'total_conducted': total_working_days,
             'percentage': pct
         })
 
-    total_all = total_class_p + total_class_a
-    class_avg = round((total_class_p / total_all * 100), 2) if total_all > 0 else 0.0
+    max_possible_slots = total_students_count * total_working_days
+    class_avg = round((total_class_p / max_possible_slots * 100), 2) if max_possible_slots > 0 else 0.0
 
     return {
         'year': year,
@@ -887,8 +889,8 @@ def generate_report_data(conn, year, start_date_str, end_date_str):
         'working_dates': working_dates,
         'students_report': students_report,
         'summary': {
-            'total_working_days': len(working_dates),
-            'total_students': len(students),
+            'total_working_days': total_working_days,
+            'total_students': total_students_count,
             'class_average_percentage': class_avg
         }
     }
