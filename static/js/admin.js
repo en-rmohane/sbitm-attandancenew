@@ -470,16 +470,29 @@ async function openAttendanceEditModal(attendanceId, year, date) {
   document.getElementById('editAttendanceId').value = attendanceId;
   document.getElementById('attendanceEditModalSubtitle').textContent = `${year} — Date: ${date}`;
   const tbody = document.getElementById('attendanceEditTableBody');
-  tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px;">Loading student records...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--slate-500);"><i data-lucide="loader" class="spin"></i> Loading student records...</td></tr>`;
   document.getElementById('attendanceEditModal').style.display = 'flex';
+  if (window.lucide) lucide.createIcons();
 
   try {
     const res = await fetch(`/api/admin/attendance-detail/${attendanceId}`);
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      data = { error: `Server error (${res.status})` };
+    }
     
+    if (res.status === 401) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">Session expired. Please <a href="javascript:void(0)" onclick="location.reload()" style="color: var(--brand-600); font-weight: 600; text-decoration: underline;">log in again</a>.</td></tr>`;
+      showToast('Session expired. Please log in again.', 'error');
+      return;
+    }
+
     if (!res.ok) {
-      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">${data.error || 'Failed to load attendance detail'}</td></tr>`;
-      showToast(data.error || 'Failed to load attendance detail', 'error');
+      const errMsg = data.error || `Failed to load attendance detail (${res.status})`;
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">${errMsg} <br><button class="btn btn-outline btn-xs" style="margin-top: 8px;" onclick="openAttendanceEditModal(${attendanceId}, '${year}', '${date}')">Retry</button></td></tr>`;
+      showToast(errMsg, 'error');
       return;
     }
 
@@ -502,7 +515,7 @@ async function openAttendanceEditModal(attendanceId, year, date) {
       </tr>
     `).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">Error loading attendance details. Please try again.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 24px; color: var(--rose-500);">Error loading attendance details. <br><button class="btn btn-outline btn-xs" style="margin-top: 8px;" onclick="openAttendanceEditModal(${attendanceId}, '${year}', '${date}')">Retry</button></td></tr>`;
     showToast('Failed to load attendance detail', 'error');
   }
 }
