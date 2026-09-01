@@ -119,7 +119,7 @@ def seed_initial_data(conn):
     cursor.execute("SELECT id FROM users WHERE role = 'admin'")
     if not cursor.fetchone():
         # Seed Admin
-        admin_pass = generate_password_hash('admin123')
+        admin_pass = generate_password_hash('112233')
         cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                        ('admin', admin_pass, 'admin'))
 
@@ -128,9 +128,9 @@ def seed_initial_data(conn):
     count = cursor.fetchone()['count']
     if count == 0:
         faculties = [
-            ("Prof. Ravi Kumar Mohane", "ravi.mohane@college.edu", "9876543210", "2nd Year", "prof.ravi", "ravi123"),
-            ("Prof. Khushbu", "khushbu@college.edu", "9876543211", "3rd Year", "prof.khushbu", "khushbu123"),
-            ("Prof. Jitendra Barmase", "jitendra.barmase@college.edu", "9876543212", "4th Year", "prof.jitendra", "jitendra123"),
+            ("Prof. Ravi Kumar Mohane", "ravi.mohane@college.edu", "9876543210", "2nd Year (CSE)", "ravi", "112233"),
+            ("Prof. Khushbu", "khushbu@college.edu", "9876543211", "3rd Year (CSE)", "khushbu", "112233"),
+            ("Prof. Jitendra Barmase", "jitendra.barmase@college.edu", "9876543212", "4th Year (CSE)", "jeet", "112233"),
         ]
         for name, email, phone, year, username, password in faculties:
             cursor.execute("INSERT INTO faculty (name, email, phone, assigned_year) VALUES (?, ?, ?, ?)",

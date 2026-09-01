@@ -50,16 +50,16 @@ function setQuickLogin(roleKey) {
 
   if (roleKey === 'admin') {
     usernameInput.value = 'admin';
-    passwordInput.value = 'admin123';
+    passwordInput.value = '112233';
   } else if (roleKey === 'ravi' || roleKey === 'faculty1') {
-    usernameInput.value = 'prof.ravi';
-    passwordInput.value = 'ravi123';
+    usernameInput.value = 'ravi';
+    passwordInput.value = '112233';
   } else if (roleKey === 'khushbu' || roleKey === 'faculty2') {
-    usernameInput.value = 'prof.khushbu';
-    passwordInput.value = 'khushbu123';
-  } else if (roleKey === 'jitendra' || roleKey === 'faculty3') {
-    usernameInput.value = 'prof.jitendra';
-    passwordInput.value = 'jitendra123';
+    usernameInput.value = 'khushbu';
+    passwordInput.value = '112233';
+  } else if (roleKey === 'jeet' || roleKey === 'jitendra' || roleKey === 'faculty3') {
+    usernameInput.value = 'jeet';
+    passwordInput.value = '112233';
   }
 }
 
