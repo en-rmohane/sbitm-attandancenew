@@ -320,10 +320,6 @@ function switchView(viewId) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-  lucide.createIcons();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
 // Toggle Mobile Drawer
 function toggleMobileNav() {
   const drawer = document.getElementById('mobileDrawer');
