@@ -554,3 +554,234 @@ async function saveEditedAttendance() {
     showToast('Network error while updating attendance', 'error');
   }
 }
+
+// ====================================================================
+// 3. ADMIN SUBJECT & ALLOCATION MANAGEMENT
+// ====================================================================
+
+let allAdminSubjects = [];
+let allFacultyCache = [];
+
+async function loadAdminSubjects() {
+  const tbody = document.getElementById('adminSubjectsTableBody');
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;">Loading subjects catalog...</td></tr>`;
+
+  try {
+    const [subRes, facRes] = await Promise.all([
+      fetch('/api/admin/subjects'),
+      fetch('/api/admin/faculty')
+    ]);
+
+    const subData = await subRes.json();
+    const facData = await facRes.json();
+
+    allAdminSubjects = subData.subjects || [];
+    allFacultyCache = facData.faculty || [];
+
+    filterAdminSubjects();
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger);">Failed to load subjects.</td></tr>`;
+    showToast('Failed to load subjects catalog', 'error');
+  }
+}
+
+function filterAdminSubjects() {
+  const search = (document.getElementById('adminSubjSearchInput')?.value || '').toLowerCase();
+  const dept = document.getElementById('adminSubjDeptFilter')?.value || '';
+  const sem = document.getElementById('adminSubjSemFilter')?.value || '';
+  const type = document.getElementById('adminSubjTypeFilter')?.value || '';
+
+  const filtered = allAdminSubjects.filter(s => {
+    const matchSearch = !search || s.code.toLowerCase().includes(search) || s.name.toLowerCase().includes(search) || (s.faculty_names || '').toLowerCase().includes(search);
+    const matchDept = !dept || s.department === dept;
+    const matchSem = !sem || s.semester === sem;
+    const matchType = !type || s.type === type;
+    return matchSearch && matchDept && matchSem && matchType;
+  });
+
+  const tbody = document.getElementById('adminSubjectsTableBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 32px; color: var(--slate-500);">No matching subjects found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(s => {
+    const isLab = s.type === 'Practical';
+    const typeBadge = isLab ? 'badge-purple' : 'badge-indigo';
+    const deptBadge = s.department === 'AI-DS' ? 'badge-amber' : 'badge-sky';
+
+    return `
+      <tr>
+        <td><strong>${s.code}</strong></td>
+        <td>
+          <div style="font-weight: 600; color: var(--slate-900);">${s.name}</div>
+        </td>
+        <td><span class="badge ${typeBadge}">${s.type}</span></td>
+        <td><span class="badge ${deptBadge}">${s.department} (${s.semester} Sem)</span></td>
+        <td><span class="badge badge-slate">${s.year}</span></td>
+        <td>
+          <div style="font-weight: 500; color: var(--slate-800);">${s.faculty_names || '<span style="color: var(--slate-400);">Unallocated</span>'}</div>
+        </td>
+        <td style="text-align: right;">
+          <button class="btn btn-outline-primary btn-xs" onclick="openAllocateModal(${s.id})" title="Allocate Faculty">
+            <i data-lucide="user-plus"></i> Allocate
+          </button>
+          <button class="btn btn-outline btn-xs" onclick="openEditSubjectModal(${s.id})" title="Edit Subject">
+            <i data-lucide="edit"></i>
+          </button>
+          <button class="btn btn-outline-danger btn-xs" onclick="deleteSubject(${s.id})" title="Delete Subject">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  lucide.createIcons();
+}
+
+function openAddSubjectModal() {
+  document.getElementById('subjectEditId').value = '';
+  document.getElementById('subjectModalTitle').textContent = 'Add New Subject';
+  document.getElementById('modalSubjectCode').value = '';
+  document.getElementById('modalSubjectName').value = '';
+  document.getElementById('modalSubjectType').value = 'Theory';
+  document.getElementById('modalSubjectDept').value = 'CSE';
+  document.getElementById('modalSubjectSem').value = 'III';
+  document.getElementById('modalSubjectYear').value = '2nd Year (CSE)';
+
+  document.getElementById('subjectModal').style.display = 'flex';
+  lucide.createIcons();
+}
+
+function openEditSubjectModal(subjectId) {
+  const s = allAdminSubjects.find(x => x.id === subjectId);
+  if (!s) return;
+
+  document.getElementById('subjectEditId').value = s.id;
+  document.getElementById('subjectModalTitle').textContent = `Edit Subject: ${s.code}`;
+  document.getElementById('modalSubjectCode').value = s.code;
+  document.getElementById('modalSubjectName').value = s.name;
+  document.getElementById('modalSubjectType').value = s.type;
+  document.getElementById('modalSubjectDept').value = s.department;
+  document.getElementById('modalSubjectSem').value = s.semester;
+  document.getElementById('modalSubjectYear').value = s.year;
+
+  document.getElementById('subjectModal').style.display = 'flex';
+  lucide.createIcons();
+}
+
+function closeSubjectModal() {
+  document.getElementById('subjectModal').style.display = 'none';
+}
+
+async function handleSaveSubject(e) {
+  e.preventDefault();
+  const id = document.getElementById('subjectEditId').value;
+  const code = document.getElementById('modalSubjectCode').value.trim();
+  const name = document.getElementById('modalSubjectName').value.trim();
+  const type = document.getElementById('modalSubjectType').value;
+  const department = document.getElementById('modalSubjectDept').value;
+  const semester = document.getElementById('modalSubjectSem').value;
+  const year = document.getElementById('modalSubjectYear').value;
+
+  const url = id ? `/api/admin/subjects/${id}` : '/api/admin/subjects';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, name, type, department, semester, year })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Failed to save subject', 'error');
+      return;
+    }
+
+    showToast(`Subject ${code} saved successfully!`, 'success');
+    closeSubjectModal();
+    loadAdminSubjects();
+  } catch (err) {
+    showToast('Network error while saving subject', 'error');
+  }
+}
+
+async function deleteSubject(subjectId) {
+  const s = allAdminSubjects.find(x => x.id === subjectId);
+  if (!confirm(`Are you sure you want to delete subject "${s?.code} - ${s?.name}"?`)) return;
+
+  try {
+    const res = await fetch(`/api/admin/subjects/${subjectId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Failed to delete subject', 'error');
+      return;
+    }
+    showToast('Subject deleted successfully', 'success');
+    loadAdminSubjects();
+  } catch (err) {
+    showToast('Network error while deleting subject', 'error');
+  }
+}
+
+function openAllocateModal(subjectId) {
+  const s = allAdminSubjects.find(x => x.id === subjectId);
+  if (!s) return;
+
+  document.getElementById('allocSubjectId').value = s.id;
+  document.getElementById('allocModalTitle').textContent = 'Allocate Faculty to Subject';
+  document.getElementById('allocModalSubtitle').textContent = `${s.code}: ${s.name} (${s.type} - ${s.year})`;
+
+  const listContainer = document.getElementById('allocFacultyCheckboxList');
+  const currentFacultyIds = s.faculty_ids || [];
+
+  listContainer.innerHTML = allFacultyCache.map(f => {
+    const isChecked = currentFacultyIds.includes(f.id);
+    return `
+      <label style="display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; background: ${isChecked ? 'var(--slate-50)' : 'transparent'};">
+        <input type="checkbox" class="alloc-faculty-cb" value="${f.id}" ${isChecked ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer;">
+        <div>
+          <div style="font-weight: 600; font-size: 13.5px; color: var(--slate-900);">${f.name}</div>
+          <div style="font-size: 11.5px; color: var(--slate-500);">${f.email} | ${f.assigned_year}</div>
+        </div>
+      </label>
+    `;
+  }).join('');
+
+  document.getElementById('allocateFacultyModal').style.display = 'flex';
+  lucide.createIcons();
+}
+
+function closeAllocateModal() {
+  document.getElementById('allocateFacultyModal').style.display = 'none';
+}
+
+async function handleSaveAllocation(e) {
+  e.preventDefault();
+  const subjectId = document.getElementById('allocSubjectId').value;
+  const checkboxes = document.querySelectorAll('.alloc-faculty-cb:checked');
+  const faculty_ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+  try {
+    const res = await fetch('/api/admin/subjects/allocate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject_id: subjectId, faculty_ids })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Failed to update allocations', 'error');
+      return;
+    }
+
+    showToast('Faculty allocations updated successfully!', 'success');
+    closeAllocateModal();
+    loadAdminSubjects();
+  } catch (err) {
+    showToast('Network error while saving allocations', 'error');
+  }
+}

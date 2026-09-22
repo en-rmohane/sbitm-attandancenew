@@ -354,6 +354,65 @@ def init_db():
     );
     """)
 
+    # 7. Subjects Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS subjects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('Theory', 'Practical')),
+        year TEXT NOT NULL,
+        department TEXT NOT NULL,
+        semester TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(code, type, year)
+    );
+    """)
+
+    # 8. Subject Allocations Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS subject_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        faculty_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'Primary',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+        FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE,
+        UNIQUE(subject_id, faculty_id)
+    );
+    """)
+
+    # 9. Subject Attendance Master Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS subject_attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        faculty_id INTEGER NOT NULL,
+        year TEXT NOT NULL,
+        date TEXT NOT NULL,
+        slot TEXT NOT NULL,
+        topic TEXT,
+        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+        FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE,
+        UNIQUE(subject_id, date, slot)
+    );
+    """)
+
+    # 10. Subject Attendance Records Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS subject_attendance_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_attendance_id INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('Present', 'Absent')),
+        FOREIGN KEY (subject_attendance_id) REFERENCES subject_attendance(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+        UNIQUE(subject_attendance_id, student_id)
+    );
+    """)
+
     conn.commit()
     seed_initial_data(conn)
     conn.close()
@@ -364,27 +423,150 @@ def seed_initial_data(conn):
     # Check if admin user exists
     cursor.execute("SELECT id FROM users WHERE role = 'admin'")
     if not cursor.fetchone():
-        # Seed Admin
+        # Seed Admin (default password: 112233)
         admin_pass = generate_password_hash('112233')
         cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                        ('admin', admin_pass, 'admin'))
 
-    # Seed 3 Faculty if none exist
-    cursor.execute("SELECT COUNT(*) as count FROM faculty")
-    count = cursor.fetchone()['count']
-    if count == 0:
-        faculties = [
-            ("Prof. Ravi Kumar Mohane", "ravi.mohane@college.edu", "9876543210", "2nd Year (CSE)", "ravi", "112233"),
-            ("Prof. Khushbu", "khushbu@college.edu", "9876543211", "3rd Year (CSE)", "khushbu", "112233"),
-            ("Prof. Jitendra Barmase", "jitendra.barmase@college.edu", "9876543212", "4th Year (CSE)", "jeet", "112233"),
-        ]
-        for name, email, phone, year, username, password in faculties:
+    # All 18 faculties from Timetables
+    all_faculties = [
+        ("Prof. Ravi Kumar Mohane", "ravi.mohane@college.edu", "9876543210", "2nd Year (CSE)", "ravi", "112233"),
+        ("Prof. Khushbu Parte", "khushbu@college.edu", "9876543211", "3rd Year (CSE)", "khushbu", "112233"),
+        ("Prof. Jitendra Barmase", "jitendra.barmase@college.edu", "9876543212", "4th Year (CSE)", "jeet", "112233"),
+        ("Prof. Satish Chadokar", "satish.chadokar@college.edu", "9876543213", "4th Year (AI-DS)", "satish", "112233"),
+        ("Prof. Sonali Rathore", "sonali.rathore@college.edu", "9876543214", "3rd Year (CSE)", "sonali", "112233"),
+        ("Prof. Alka Narware", "alka.narware@college.edu", "9876543215", "4th Year (CSE)", "alka", "112233"),
+        ("Prof. Ashish Gawande", "ashish.gawande@college.edu", "9876543216", "3rd Year (AI-DS)", "ashish", "112233"),
+        ("Prof. Bhavesh", "bhavesh@college.edu", "9876543217", "3rd Year (AI-DS)", "bhavesh", "112233"),
+        ("Prof. Nilesh Mishra", "nilesh.mishra@college.edu", "9876543218", "3rd Year (AI-DS)", "nilesh", "112233"),
+        ("Dr. Pankaj Singh Sisodiya", "pankaj.sisodiya@college.edu", "9876543219", "2nd Year (CSE)", "pankaj", "112233"),
+        ("Prof. Shashank Mane", "shashank.mane@college.edu", "9876543220", "2nd Year (AI-DS)", "shashank", "112233"),
+        ("Prof. Rishu Dangi", "rishu.dangi@college.edu", "9876543221", "2nd Year (AI-DS)", "rishu", "112233"),
+        ("Prof. V. K. Malvi", "vk.malvi@college.edu", "9876543222", "2nd Year (AI-DS)", "malvi", "112233"),
+        ("Prof. Deepika Malviya", "deepika.malviya@college.edu", "9876543223", "2nd Year (AI-DS)", "deepika", "112233"),
+        ("Prof. Pushpa", "pushpa@college.edu", "9876543224", "2nd Year (CSE)", "pushpa", "112233"),
+        ("Prof. Pramila Gharjale", "pramila.gharjale@college.edu", "9876543225", "2nd Year (CSE)", "pramila", "112233"),
+        ("Dr. P. J. Shah", "pj.shah@college.edu", "9876543226", "2nd Year (CSE)", "pjshah", "112233"),
+        ("Prof. Vinay Sahu", "vinay.sahu@college.edu", "9876543227", "All Years (T&P)", "vinay", "112233"),
+    ]
+
+    faculty_id_map = {}
+    for name, email, phone, year, username, password in all_faculties:
+        cursor.execute("SELECT id FROM faculty WHERE email = ? OR name = ?", (email, name))
+        f_row = cursor.fetchone()
+        if f_row:
+            f_id = f_row['id']
+            cursor.execute("UPDATE faculty SET name = ?, phone = ?, assigned_year = ? WHERE id = ?",
+                           (name, phone, year, f_id))
+        else:
             cursor.execute("INSERT INTO faculty (name, email, phone, assigned_year) VALUES (?, ?, ?, ?)",
                            (name, email, phone, year))
-            faculty_id = cursor.lastrowid
+            f_id = cursor.lastrowid
+        faculty_id_map[username] = f_id
+
+        # Check / create user login
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        u_row = cursor.fetchone()
+        if not u_row:
             pass_hash = generate_password_hash(password)
             cursor.execute("INSERT INTO users (username, password_hash, role, faculty_id) VALUES (?, ?, ?, ?)",
-                           (username, pass_hash, 'faculty', faculty_id))
+                           (username, pass_hash, 'faculty', f_id))
+        else:
+            cursor.execute("UPDATE users SET faculty_id = ? WHERE id = ?", (f_id, u_row['id']))
+
+    # Seed All Timetable Subjects (CSE & AI-DS)
+    subjects_seed = [
+        # --- CSE III SEM (2nd Year CSE) ---
+        ("ES-301", "Energy & Environmental Engineering (EEE)", "Theory", "2nd Year (CSE)", "CSE", "III", ["pushpa"]),
+        ("CS-302", "Discrete Structure", "Theory", "2nd Year (CSE)", "CSE", "III", ["pramila"]),
+        ("CS-303", "Data Structures", "Theory", "2nd Year (CSE)", "CSE", "III", ["pankaj"]),
+        ("CS-303", "Data Structures Lab", "Practical", "2nd Year (CSE)", "CSE", "III", ["ravi"]),
+        ("CS-304", "Digital System", "Theory", "2nd Year (CSE)", "CSE", "III", ["pjshah"]),
+        ("CS-304", "Digital System Lab", "Practical", "2nd Year (CSE)", "CSE", "III", ["pjshah"]),
+        ("CS-305", "Object Oriented Programming (OOPM)", "Theory", "2nd Year (CSE)", "CSE", "III", ["ravi"]),
+        ("CS-305", "OOPM Lab", "Practical", "2nd Year (CSE)", "CSE", "III", ["ravi", "deepika"]),
+        ("CS-306", "Computer Workshop", "Practical", "2nd Year (CSE)", "CSE", "III", ["jeet"]),
+        ("BT-107", "Internship-I (CSE)", "Practical", "2nd Year (CSE)", "CSE", "III", ["vinay"]),
+
+        # --- CSE V SEM (3rd Year CSE) ---
+        ("CS-501", "Theory of Computation (TOC)", "Theory", "3rd Year (CSE)", "CSE", "V", ["satish"]),
+        ("CS-501", "Theory of Computation Lab", "Practical", "3rd Year (CSE)", "CSE", "V", ["satish"]),
+        ("CS-502", "Database Management Systems (DBMS)", "Theory", "3rd Year (CSE)", "CSE", "V", ["sonali"]),
+        ("CS-502", "DBMS Lab", "Practical", "3rd Year (CSE)", "CSE", "V", ["sonali"]),
+        ("CS-503", "Cyber Security", "Theory", "3rd Year (CSE)", "CSE", "V", ["khushbu"]),
+        ("CS-504", "Internet & Web Technology (IWT)", "Theory", "3rd Year (CSE)", "CSE", "V", ["pramila"]),
+        ("CS-505", "Linux Lab", "Practical", "3rd Year (CSE)", "CSE", "V", ["khushbu"]),
+        ("CS-506", "Python Lab", "Practical", "3rd Year (CSE)", "CSE", "V", ["ravi"]),
+        ("CS-507", "Internship-II (CSE)", "Practical", "3rd Year (CSE)", "CSE", "V", ["vinay"]),
+        ("CS-508", "Minor Project-I (CSE)", "Practical", "3rd Year (CSE)", "CSE", "V", ["ashish", "jeet"]),
+
+        # --- CSE VII SEM (4th Year CSE) ---
+        ("CS-701", "Software Architecture", "Theory", "4th Year (CSE)", "CSE", "VII", ["alka"]),
+        ("CS-701", "Software Architecture Lab", "Practical", "4th Year (CSE)", "CSE", "VII", ["alka"]),
+        ("CS-702", "Big Data", "Theory", "4th Year (CSE)", "CSE", "VII", ["satish"]),
+        ("CS-703", "Data Mining", "Theory", "4th Year (CSE)", "CSE", "VII", ["jeet"]),
+        ("CS-704", "Big Data Lab", "Practical", "4th Year (CSE)", "CSE", "VII", ["satish"]),
+        ("CS-705", "Data Mining Lab", "Practical", "4th Year (CSE)", "CSE", "VII", ["jeet"]),
+        ("CS-706", "Major Project-I (CSE)", "Practical", "4th Year (CSE)", "CSE", "VII", ["satish", "pankaj"]),
+        ("CS-707", "Internship-III (CSE)", "Practical", "4th Year (CSE)", "CSE", "VII", ["vinay"]),
+
+        # --- AI-DS III SEM (2nd Year AI-DS / 2nd Year) ---
+        ("AD-301", "Technical Communication (Tech Comm)", "Theory", "2nd Year (CSE)", "AI-DS", "III", ["rishu"]),
+        ("AD-302", "Probability & Statistics (Prob & Stat)", "Theory", "2nd Year (CSE)", "AI-DS", "III", ["malvi"]),
+        ("AD-303", "Data Structures (AD)", "Theory", "2nd Year (CSE)", "AI-DS", "III", ["pankaj"]),
+        ("AD-303", "Data Structures Lab (AD)", "Practical", "2nd Year (CSE)", "AI-DS", "III", ["ravi"]),
+        ("AD-304", "Artificial Intelligence (AI)", "Theory", "2nd Year (CSE)", "AI-DS", "III", ["shashank"]),
+        ("AD-304", "AI Lab", "Practical", "2nd Year (CSE)", "AI-DS", "III", ["shashank"]),
+        ("AD-305", "OOPM (AI-DS)", "Theory", "2nd Year (CSE)", "AI-DS", "III", ["ravi"]),
+        ("AD-305", "OOPM Lab (AI-DS)", "Practical", "2nd Year (CSE)", "AI-DS", "III", ["ravi"]),
+        ("AD-306", "Introduction To Python Lab", "Practical", "2nd Year (CSE)", "AI-DS", "III", ["deepika"]),
+        ("BT-107", "Internship-I (AI-DS)", "Practical", "2nd Year (CSE)", "AI-DS", "III", ["vinay"]),
+
+        # --- AI-DS V SEM (3rd Year AI-DS / 3rd Year) ---
+        ("AD-501", "Theory of Computation (TOC AD)", "Theory", "3rd Year (CSE)", "AI-DS", "V", ["satish"]),
+        ("AD-501", "TOC Lab (AI-DS)", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["satish"]),
+        ("AD-502", "Machine Learning (ML)", "Theory", "3rd Year (CSE)", "AI-DS", "V", ["ashish"]),
+        ("AD-502", "ML Lab", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["ashish"]),
+        ("AD-503", "Computer Organization & Architecture (COA)", "Theory", "3rd Year (CSE)", "AI-DS", "V", ["bhavesh"]),
+        ("AD-504", "Management Information Systems (MIS)", "Theory", "3rd Year (CSE)", "AI-DS", "V", ["nilesh"]),
+        ("AD-505", "COA Lab", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["bhavesh"]),
+        ("AD-506", "Linux Lab (AI-DS)", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["khushbu"]),
+        ("BT-407", "Internship-II (AI-DS)", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["vinay"]),
+        ("AD-508", "Minor Project (AI-DS)", "Practical", "3rd Year (CSE)", "AI-DS", "V", ["nilesh"]),
+
+        # --- AI-DS VII SEM (4th Year AI-DS) ---
+        ("AD-701", "Artificial Intelligence & Computer Vision (AICV)", "Theory", "4th Year (AI-DS)", "AI-DS", "VII", ["alka"]),
+        ("AD-701", "AICV Lab", "Practical", "4th Year (AI-DS)", "AI-DS", "VII", ["alka"]),
+        ("AD-702", "Cloud Computing", "Theory", "4th Year (AI-DS)", "AI-DS", "VII", ["sonali"]),
+        ("AD-703", "Data Visualization", "Theory", "4th Year (AI-DS)", "AI-DS", "VII", ["ashish"]),
+        ("AD-704", "Cloud Computing Lab", "Practical", "4th Year (AI-DS)", "AI-DS", "VII", ["sonali"]),
+        ("AD-705", "Data Visualization Lab", "Practical", "4th Year (AI-DS)", "AI-DS", "VII", ["ashish"]),
+        ("AD-706", "Major Project-I (AI-DS)", "Practical", "4th Year (AI-DS)", "AI-DS", "VII", ["nilesh"]),
+        ("AD-607", "Internship-III (AI-DS)", "Practical", "4th Year (AI-DS)", "AI-DS", "VII", ["vinay"]),
+    ]
+
+    for code, name, stype, yr, dept, sem, faculty_usernames in subjects_seed:
+        cursor.execute("SELECT id FROM subjects WHERE code = ? AND type = ? AND year = ?", (code, stype, yr))
+        s_row = cursor.fetchone()
+        if s_row:
+            s_id = s_row['id']
+            cursor.execute("UPDATE subjects SET name = ?, department = ?, semester = ? WHERE id = ?",
+                           (name, dept, sem, s_id))
+        else:
+            cursor.execute("""
+            INSERT INTO subjects (code, name, type, year, department, semester)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (code, name, stype, yr, dept, sem))
+            s_id = cursor.lastrowid
+
+        # Allocate to faculties
+        for u_name in faculty_usernames:
+            f_id = faculty_id_map.get(u_name)
+            if f_id:
+                cursor.execute("""
+                INSERT OR IGNORE INTO subject_allocations (subject_id, faculty_id, role)
+                VALUES (?, ?, 'Primary')
+                """, (s_id, f_id))
 
     # Seed realistic students across 2nd, 3rd, and 4th Years
     cursor.execute("SELECT COUNT(*) as count FROM students")

@@ -344,6 +344,260 @@ def submit_attendance():
         'total_marked': len(records)
     })
 
+# 2.1 Subject-Wise Attendance APIs
+@app.route('/api/faculty/my-subjects', methods=['GET'])
+@login_required
+def get_faculty_my_subjects():
+    faculty_id = session.get('faculty_id')
+    role = session.get('role')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if role == 'admin' or not faculty_id:
+        cursor.execute("""
+            SELECT s.id, s.code, s.name, s.type, s.year, s.department, s.semester,
+                   GROUP_CONCAT(f.name, ', ') as faculty_names
+            FROM subjects s
+            LEFT JOIN subject_allocations sa ON s.id = sa.subject_id
+            LEFT JOIN faculty f ON sa.faculty_id = f.id
+            GROUP BY s.id
+            ORDER BY s.department ASC, s.semester ASC, s.code ASC, s.type ASC
+        """)
+        rows = cursor.fetchall()
+        subjects = []
+        for r in rows:
+            cursor.execute("SELECT COUNT(*) as cnt FROM students WHERE year = ? AND status = 'active'", (r['year'],))
+            cnt = cursor.fetchone()['cnt']
+            subjects.append({
+                'id': r['id'],
+                'code': r['code'],
+                'name': r['name'],
+                'type': r['type'],
+                'year': r['year'],
+                'department': r['department'],
+                'semester': r['semester'],
+                'faculty_names': r['faculty_names'] or 'Unallocated',
+                'student_count': cnt
+            })
+    else:
+        cursor.execute("""
+            SELECT s.id, s.code, s.name, s.type, s.year, s.department, s.semester, sa.role
+            FROM subjects s
+            JOIN subject_allocations sa ON s.id = sa.subject_id
+            WHERE sa.faculty_id = ?
+            ORDER BY s.department ASC, s.semester ASC, s.code ASC, s.type ASC
+        """, (faculty_id,))
+        rows = cursor.fetchall()
+        subjects = []
+        for r in rows:
+            cursor.execute("SELECT COUNT(*) as cnt FROM students WHERE year = ? AND status = 'active'", (r['year'],))
+            cnt = cursor.fetchone()['cnt']
+            subjects.append({
+                'id': r['id'],
+                'code': r['code'],
+                'name': r['name'],
+                'type': r['type'],
+                'year': r['year'],
+                'department': r['department'],
+                'semester': r['semester'],
+                'role': r['role'],
+                'student_count': cnt
+            })
+
+    conn.close()
+    return jsonify({'subjects': subjects})
+
+@app.route('/api/faculty/subject-students', methods=['GET'])
+@login_required
+def get_subject_students():
+    subject_id = request.args.get('subject_id')
+    if not subject_id:
+        return jsonify({'error': 'subject_id parameter is required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,))
+    subj = cursor.fetchone()
+    if not subj:
+        conn.close()
+        return jsonify({'error': 'Subject not found'}), 404
+
+    cursor.execute("""
+        SELECT id, roll_no, name, enrollment_no, year, status
+        FROM students
+        WHERE year = ? AND status = 'active'
+        ORDER BY CAST(roll_no AS INTEGER), roll_no ASC
+    """, (subj['year'],))
+    students = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    return jsonify({
+        'subject': dict(subj),
+        'students': students
+    })
+
+@app.route('/api/faculty/subject-attendance/check', methods=['GET'])
+@login_required
+def check_subject_attendance():
+    subject_id = request.args.get('subject_id')
+    date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    slot = request.args.get('slot', 'Lecture 1 (10:00 - 11:00 AM)')
+
+    if not subject_id or not date_str:
+        return jsonify({'error': 'subject_id and date are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    is_pre_session = date_str < SESSION_START_DATE
+    weekend_name = get_weekend_name(date_str)
+    holiday_reason = get_holiday_reason(conn, date_str)
+
+    cursor.execute("""
+        SELECT sa.id, sa.subject_id, sa.faculty_id, sa.year, sa.date, sa.slot, sa.topic, sa.submitted_at,
+               f.name as faculty_name, s.code as subject_code, s.name as subject_name, s.type as subject_type
+        FROM subject_attendance sa
+        LEFT JOIN faculty f ON sa.faculty_id = f.id
+        LEFT JOIN subjects s ON sa.subject_id = s.id
+        WHERE sa.subject_id = ? AND sa.date = ? AND sa.slot = ?
+    """, (subject_id, date_str, slot))
+    existing = cursor.fetchone()
+
+    records = []
+    if existing:
+        cursor.execute("""
+            SELECT sar.student_id, sar.status, st.roll_no, st.name, st.enrollment_no
+            FROM subject_attendance_records sar
+            JOIN students st ON sar.student_id = st.id
+            WHERE sar.subject_attendance_id = ?
+            ORDER BY CAST(st.roll_no AS INTEGER), st.roll_no ASC
+        """, (existing['id'],))
+        records = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    return jsonify({
+        'subject_id': int(subject_id),
+        'date': date_str,
+        'slot': slot,
+        'is_pre_session': is_pre_session,
+        'is_weekend': bool(weekend_name),
+        'weekend_name': weekend_name,
+        'is_holiday': bool(holiday_reason),
+        'holiday_reason': holiday_reason,
+        'is_submitted': bool(existing),
+        'submission_info': dict(existing) if existing else None,
+        'records': records
+    })
+
+@app.route('/api/faculty/subject-attendance/submit', methods=['POST'])
+@login_required
+def submit_subject_attendance():
+    data = request.get_json() or {}
+    subject_id = data.get('subject_id')
+    date_str = data.get('date')
+    slot = data.get('slot', 'Lecture 1 (10:00 - 11:00 AM)')
+    topic = data.get('topic', '').strip()
+    records = data.get('records', [])
+
+    if not subject_id or not date_str or not records:
+        return jsonify({'error': 'Subject ID, Date, and student records are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,))
+    subj = cursor.fetchone()
+    if not subj:
+        conn.close()
+        return jsonify({'error': 'Subject not found'}), 404
+
+    if date_str < SESSION_START_DATE:
+        conn.close()
+        return jsonify({'error': f'Cannot submit attendance before session start date ({SESSION_START_DATE}).'}), 400
+
+    if is_weekend(date_str):
+        w_name = get_weekend_name(date_str) or 'Weekend'
+        conn.close()
+        return jsonify({'error': f'Cannot submit attendance on {w_name} (College Holiday / Non-working day).'}), 400
+
+    h_reason = get_holiday_reason(conn, date_str)
+    if h_reason:
+        conn.close()
+        return jsonify({'error': f'Cannot submit attendance on holiday: {h_reason}'}), 400
+
+    cursor.execute("SELECT id FROM subject_attendance WHERE subject_id = ? AND date = ? AND slot = ?",
+                   (subject_id, date_str, slot))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({'error': f'Attendance for {subj["code"]} ({slot}) has already been submitted for {date_str}.'}), 409
+
+    faculty_id = session.get('faculty_id')
+    submission_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor.execute("""
+        INSERT INTO subject_attendance (subject_id, faculty_id, year, date, slot, topic, submitted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (subject_id, faculty_id, subj['year'], date_str, slot, topic, submission_time))
+    att_id = cursor.lastrowid
+
+    tuples = [(att_id, r['student_id'], r['status']) for r in records]
+    cursor.executemany("""
+        INSERT INTO subject_attendance_records (subject_attendance_id, student_id, status)
+        VALUES (?, ?, ?)
+    """, tuples)
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'message': f'Subject attendance for {subj["code"]} - {subj["name"]} submitted successfully.',
+        'subject_attendance_id': att_id,
+        'subject_code': subj['code'],
+        'date': date_str,
+        'slot': slot,
+        'total_marked': len(records)
+    })
+
+@app.route('/api/faculty/subject-attendance/history', methods=['GET'])
+@login_required
+def get_subject_attendance_history():
+    subject_id = request.args.get('subject_id')
+    faculty_id = session.get('faculty_id')
+    role = session.get('role')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    query = """
+        SELECT sa.id, sa.subject_id, sa.faculty_id, sa.year, sa.date, sa.slot, sa.topic, sa.submitted_at,
+               s.code as subject_code, s.name as subject_name, s.type as subject_type,
+               f.name as faculty_name,
+               COUNT(sar.id) as total_students,
+               SUM(CASE WHEN sar.status = 'Present' THEN 1 ELSE 0 END) as present_count,
+               SUM(CASE WHEN sar.status = 'Absent' THEN 1 ELSE 0 END) as absent_count
+        FROM subject_attendance sa
+        JOIN subjects s ON sa.subject_id = s.id
+        LEFT JOIN faculty f ON sa.faculty_id = f.id
+        LEFT JOIN subject_attendance_records sar ON sa.id = sar.subject_attendance_id
+        WHERE 1=1
+    """
+    params = []
+    if subject_id:
+        query += " AND sa.subject_id = ?"
+        params.append(subject_id)
+    elif role != 'admin' and faculty_id:
+        query += " AND sa.faculty_id = ?"
+        params.append(faculty_id)
+
+    query += " GROUP BY sa.id ORDER BY sa.date DESC, sa.submitted_at DESC LIMIT 30"
+    cursor.execute(query, params)
+    history = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    return jsonify({'history': history})
+
 # 3. Admin Dashboard & Logs APIs
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
@@ -679,9 +933,154 @@ def update_faculty(faculty_id):
         conn.commit()
         conn.close()
         return jsonify({'message': 'Faculty updated successfully'})
-    except sqlite3.IntegrityError:
+    except Exception as e:
         conn.close()
-        return jsonify({'error': 'Email is already in use by another faculty.'}), 409
+        return jsonify({'error': f'Failed to update faculty: {str(e)}'}), 400
+
+# 5.1 Admin Subject & Allocation APIs
+@app.route('/api/admin/subjects', methods=['GET'])
+@login_required
+def get_admin_subjects():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT s.id, s.code, s.name, s.type, s.year, s.department, s.semester,
+               GROUP_CONCAT(f.name, ', ') as faculty_names,
+               GROUP_CONCAT(f.id, ',') as faculty_ids
+        FROM subjects s
+        LEFT JOIN subject_allocations sa ON s.id = sa.subject_id
+        LEFT JOIN faculty f ON sa.faculty_id = f.id
+        GROUP BY s.id
+        ORDER BY s.department ASC, s.semester ASC, s.code ASC, s.type ASC
+    """)
+    rows = cursor.fetchall()
+    subjects = []
+    for r in rows:
+        f_ids = [int(x) for x in r['faculty_ids'].split(',') if x] if r['faculty_ids'] else []
+        cursor.execute("SELECT COUNT(*) as cnt FROM students WHERE year = ? AND status = 'active'", (r['year'],))
+        cnt = cursor.fetchone()['cnt']
+        subjects.append({
+            'id': r['id'],
+            'code': r['code'],
+            'name': r['name'],
+            'type': r['type'],
+            'year': r['year'],
+            'department': r['department'],
+            'semester': r['semester'],
+            'faculty_names': r['faculty_names'] or 'Unallocated',
+            'faculty_ids': f_ids,
+            'student_count': cnt
+        })
+    conn.close()
+    return jsonify({'subjects': subjects})
+
+@app.route('/api/admin/subjects', methods=['POST'])
+@admin_required
+def add_admin_subject():
+    data = request.get_json() or {}
+    code = data.get('code', '').strip().upper()
+    name = data.get('name', '').strip()
+    stype = data.get('type', 'Theory').strip()
+    year = data.get('year', '').strip()
+    department = data.get('department', 'CSE').strip()
+    semester = data.get('semester', 'III').strip()
+    faculty_ids = data.get('faculty_ids', [])
+
+    if not code or not name or not year:
+        return jsonify({'error': 'Subject Code, Name, and Year/Branch are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO subjects (code, name, type, year, department, semester)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (code, name, stype, year, department, semester))
+        subject_id = cursor.lastrowid
+
+        for fid in faculty_ids:
+            cursor.execute("""
+                INSERT OR IGNORE INTO subject_allocations (subject_id, faculty_id, role)
+                VALUES (?, ?, 'Primary')
+            """, (subject_id, fid))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'message': f'Subject {code} added successfully', 'id': subject_id}), 201
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': f'Failed to add subject: {str(e)}'}), 400
+
+@app.route('/api/admin/subjects/<int:subject_id>', methods=['PUT'])
+@admin_required
+def update_admin_subject(subject_id):
+    data = request.get_json() or {}
+    code = data.get('code', '').strip().upper()
+    name = data.get('name', '').strip()
+    stype = data.get('type', 'Theory').strip()
+    year = data.get('year', '').strip()
+    department = data.get('department', 'CSE').strip()
+    semester = data.get('semester', 'III').strip()
+    faculty_ids = data.get('faculty_ids', [])
+
+    if not code or not name or not year:
+        return jsonify({'error': 'Subject Code, Name, and Year/Branch are required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE subjects
+            SET code = ?, name = ?, type = ?, year = ?, department = ?, semester = ?
+            WHERE id = ?
+        """, (code, name, stype, year, department, semester, subject_id))
+
+        if isinstance(faculty_ids, list):
+            cursor.execute("DELETE FROM subject_allocations WHERE subject_id = ?", (subject_id,))
+            for fid in faculty_ids:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO subject_allocations (subject_id, faculty_id, role)
+                    VALUES (?, ?, 'Primary')
+                """, (subject_id, fid))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Subject updated successfully'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': f'Failed to update subject: {str(e)}'}), 400
+
+@app.route('/api/admin/subjects/<int:subject_id>', methods=['DELETE'])
+@admin_required
+def delete_admin_subject(subject_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Subject deleted successfully'})
+
+@app.route('/api/admin/subjects/allocate', methods=['POST'])
+@admin_required
+def allocate_subject():
+    data = request.get_json() or {}
+    subject_id = data.get('subject_id')
+    faculty_ids = data.get('faculty_ids', [])
+
+    if not subject_id:
+        return jsonify({'error': 'subject_id is required'}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM subject_allocations WHERE subject_id = ?", (subject_id,))
+    for fid in faculty_ids:
+        cursor.execute("""
+            INSERT OR IGNORE INTO subject_allocations (subject_id, faculty_id, role)
+            VALUES (?, ?, 'Primary')
+        """, (subject_id, fid))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Faculty allocations updated successfully'})
 
 # 6. Holiday Management APIs
 @app.route('/api/admin/holidays', methods=['GET'])

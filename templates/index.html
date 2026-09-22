@@ -30,18 +30,33 @@
         <p class="brand-subtitle">Student Attendance Management Portal</p>
       </div>
 
-      <div class="quick-roles-pills">
+      <div class="quick-roles-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
         <button type="button" class="role-pill-btn active" onclick="setQuickLogin('admin')">
           <i data-lucide="shield-check"></i> Admin
         </button>
         <button type="button" class="role-pill-btn" onclick="setQuickLogin('ravi')">
-          <i data-lucide="user"></i> Ravi (2nd Yr)
+          <i data-lucide="user"></i> Ravi (OOPM)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('satish')">
+          <i data-lucide="user"></i> Satish (TOC)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('sonali')">
+          <i data-lucide="user"></i> Sonali (DBMS)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('alka')">
+          <i data-lucide="user"></i> Alka (Soft. Arch)
         </button>
         <button type="button" class="role-pill-btn" onclick="setQuickLogin('khushbu')">
-          <i data-lucide="user"></i> Khushbu (3rd Yr)
+          <i data-lucide="user"></i> Khushbu (Cyber)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('ashish')">
+          <i data-lucide="user"></i> Ashish (ML)
         </button>
         <button type="button" class="role-pill-btn" onclick="setQuickLogin('jeet')">
-          <i data-lucide="user"></i> Jeet (4th Yr)
+          <i data-lucide="user"></i> Jeet (Data Mining)
+        </button>
+        <button type="button" class="role-pill-btn" onclick="setQuickLogin('vinay')">
+          <i data-lucide="user"></i> Vinay (Internship)
         </button>
       </div>
 
@@ -121,12 +136,153 @@
     <!-- Main Dynamic Content Container -->
     <main class="main-content">
       
-      <!-- ================= FACULTY VIEW: MARK ATTENDANCE ================= -->
+      <!-- ================= FACULTY VIEW: ALLOCATED SUBJECTS & LABS ================= -->
+      <section id="facultySubjectsView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title" id="facultyWelcomeTitle">My Allocated Subjects & Labs</h2>
+            <p class="page-desc">Select a subject or lab session to mark lecture attendance.</p>
+          </div>
+          <button class="btn btn-outline" onclick="loadFacultyMySubjects()">
+            <i data-lucide="refresh-cw"></i> Refresh
+          </button>
+        </div>
+
+        <!-- Subjects Grid View (Default) -->
+        <div id="subjectsGridView">
+          <div class="subjects-grid" id="mySubjectsGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Active Subject Attendance Marking View (Opened on Click) -->
+        <div id="subjectAttendancePanel" class="card" style="display: none; margin-top: 16px;">
+          <div class="card-header-clean" style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <button class="btn btn-outline btn-sm" onclick="closeSubjectAttendancePanel()">
+                <i data-lucide="arrow-left"></i> All Subjects
+              </button>
+              <div>
+                <h3 class="card-title" id="activeSubjTitle" style="font-size: 1.25rem; font-weight: 700;">CS-501: Theory of Computation</h3>
+                <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+                  <span class="badge badge-indigo" id="activeSubjType">Theory</span>
+                  <span class="badge badge-sky" id="activeSubjYear">3rd Year (CSE)</span>
+                  <span class="badge badge-amber" id="activeSubjDept">CSE</span>
+                  <span class="badge" style="background: var(--slate-100); color: var(--slate-700);" id="activeSubjStudents">68 Students</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Session Controls: Date, Time Slot, Topic -->
+          <div class="report-filters-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+            <div class="filter-item">
+              <label for="subjAttDateInput"><i data-lucide="calendar"></i> Attendance Date</label>
+              <input type="date" id="subjAttDateInput" class="input-date" onchange="onSubjectDateOrSlotChange()">
+            </div>
+            <div class="filter-item">
+              <label for="subjAttSlotSelect"><i data-lucide="clock"></i> Lecture / Lab Slot</label>
+              <select id="subjAttSlotSelect" class="input-select" onchange="onSubjectDateOrSlotChange()">
+                <option value="Lecture 1 (10:00 - 11:00 AM)">Lecture 1 (10:00 - 11:00 AM)</option>
+                <option value="Lecture 2 (11:00 - 12:00 PM)">Lecture 2 (11:00 - 12:00 PM)</option>
+                <option value="Lecture 3 (12:30 - 01:25 PM)">Lecture 3 (12:30 - 01:25 PM)</option>
+                <option value="Lecture 4 (01:25 - 02:20 PM)">Lecture 4 (01:25 - 02:20 PM)</option>
+                <option value="Lecture 5 (02:35 - 03:25 PM)">Lecture 5 (02:35 - 03:25 PM)</option>
+                <option value="Lecture 6 (03:25 - 04:15 PM)">Lecture 6 (03:25 - 04:15 PM)</option>
+                <option value="Lab Session (B1)">Lab Session (Batch B1)</option>
+                <option value="Lab Session (B2)">Lab Session (Batch B2)</option>
+                <option value="Combined Lab Session">Combined Lab Session</option>
+                <option value="Major/Minor Project Session">Major/Minor Project Session</option>
+              </select>
+            </div>
+            <div class="filter-item" style="grid-column: span 2;">
+              <label for="subjAttTopicInput"><i data-lucide="book-open"></i> Topic Covered (Optional)</label>
+              <input type="text" id="subjAttTopicInput" class="input-text" placeholder="e.g. Finite Automata & Regular Expressions">
+            </div>
+          </div>
+
+          <!-- Alert warning box -->
+          <div id="subjDateAlertBox" class="alert-box" style="display: none; margin-bottom: 20px;"></div>
+
+          <!-- Toolbar with stats & mark all -->
+          <div class="action-card attendance-control-card" id="subjAttendanceControls">
+            <div class="stats-counter-group">
+              <div class="count-pill">Total: <b id="subjTotalStudentCount">0</b></div>
+              <div class="count-pill pill-present">Present: <b id="subjPresentCount">0</b></div>
+              <div class="count-pill pill-absent">Absent: <b id="subjAbsentCount">0</b></div>
+            </div>
+
+            <div class="quick-batch-btns" id="subjBatchActionButtons">
+              <button type="button" class="btn btn-outline-success" onclick="markAllSubject('Present')">
+                <i data-lucide="check-circle-2"></i> Mark All Present
+              </button>
+              <button type="button" class="btn btn-outline-danger" onclick="markAllSubject('Absent')">
+                <i data-lucide="x-circle"></i> Mark All Absent
+              </button>
+            </div>
+          </div>
+
+          <!-- Student roster table -->
+          <div class="attendance-table-container">
+            <table class="data-table attendance-table" id="subjAttendanceTable">
+              <thead>
+                <tr>
+                  <th style="width: 80px;">Roll No</th>
+                  <th>Student Name</th>
+                  <th class="hide-mobile" style="width: 140px;">Enrollment</th>
+                  <th style="width: 220px; text-align: center;">Attendance Action</th>
+                </tr>
+              </thead>
+              <tbody id="subjAttendanceTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Submit action bar -->
+          <div class="submit-action-bar" style="position: static; margin-top: 24px;">
+            <div class="submission-summary">
+              <span id="subjSubmitSummaryText">Ready to record subject attendance.</span>
+            </div>
+            <button type="button" id="btnSubmitSubjAttendance" class="btn btn-success btn-lg" onclick="submitSubjAttendanceData()">
+              <i data-lucide="check"></i>
+              <span>Save Subject Attendance</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Past Subject Attendance History Card -->
+        <div class="card" id="subjectHistoryCard" style="margin-top: 24px;">
+          <div class="card-header-clean">
+            <h3 class="card-title"><i data-lucide="history"></i> Recent Subject Lecture History</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Subject</th>
+                  <th>Type</th>
+                  <th>Slot</th>
+                  <th>Topic</th>
+                  <th>Present / Total</th>
+                  <th>Percentage</th>
+                </tr>
+              </thead>
+              <tbody id="subjHistoryTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= FACULTY VIEW: MARK ATTENDANCE (DAILY CLASS) ================= -->
       <section id="facultyMarkView" class="view-section" style="display: none;">
         <div class="page-title-row">
           <div>
-            <h2 class="page-title" id="facultyYearHeader">Daily Attendance Portal</h2>
-            <p class="page-desc">Mark student attendance for the selected class and date.</p>
+            <h2 class="page-title" id="facultyYearHeader">Daily Class Attendance (Class Coordinator)</h2>
+            <p class="page-desc">Mark general daily attendance for the entire class.</p>
           </div>
           <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
             <div class="date-selector-box" id="facultyClassSelectBox">
@@ -371,6 +527,69 @@
                 </tr>
               </thead>
               <tbody id="studentsTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ADMIN VIEW: SUBJECTS & ALLOCATIONS ================= -->
+      <section id="adminSubjectsView" class="view-section" style="display: none;">
+        <div class="page-title-row">
+          <div>
+            <h2 class="page-title">Subject Catalog & Faculty Allocation</h2>
+            <p class="page-desc">Manage all Theory & Practical/Lab subjects for CSE and AI-DS and allocate faculties.</p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddSubjectModal()">
+            <i data-lucide="plus-circle"></i> Add New Subject
+          </button>
+        </div>
+
+        <!-- Filter tabs for Admin Subjects -->
+        <div class="card filter-card">
+          <div class="filter-flex">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="adminSubjSearchInput" placeholder="Search by subject code, name, or faculty..." oninput="filterAdminSubjects()">
+            </div>
+            <div class="filter-controls">
+              <select id="adminSubjDeptFilter" class="input-select" onchange="filterAdminSubjects()">
+                <option value="">All Departments</option>
+                <option value="CSE">CSE</option>
+                <option value="AI-DS">AI-DS</option>
+              </select>
+              <select id="adminSubjSemFilter" class="input-select" onchange="filterAdminSubjects()">
+                <option value="">All Semesters</option>
+                <option value="III">3rd Sem (III)</option>
+                <option value="V">5th Sem (V)</option>
+                <option value="VII">7th Sem (VII)</option>
+              </select>
+              <select id="adminSubjTypeFilter" class="input-select" onchange="filterAdminSubjects()">
+                <option value="">All Types</option>
+                <option value="Theory">Theory Only</option>
+                <option value="Practical">Practical / Lab Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subjects Table -->
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Code</th>
+                  <th>Subject Name</th>
+                  <th style="width: 110px;">Type</th>
+                  <th style="width: 130px;">Dept & Sem</th>
+                  <th style="width: 150px;">Class / Year</th>
+                  <th>Allocated Faculty</th>
+                  <th style="width: 140px; text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminSubjectsTableBody">
                 <!-- Rendered dynamically -->
               </tbody>
             </table>
@@ -710,8 +929,89 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeAttendanceEditModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="saveEditedAttendance()">Save Changes</button>
+  <!-- 6. Add / Edit Subject Modal -->
+  <div id="subjectModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="subjectModalTitle">Add New Subject</h3>
+        <button class="btn-icon" onclick="closeSubjectModal()"><i data-lucide="x"></i></button>
       </div>
+      <form id="subjectForm" onsubmit="handleSaveSubject(event)">
+        <input type="hidden" id="subjectEditId" value="">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="modalSubjectCode">Subject Code *</label>
+            <input type="text" id="modalSubjectCode" class="input-text" placeholder="e.g. CS-501, AD-305" required>
+          </div>
+          <div class="form-group">
+            <label for="modalSubjectName">Subject Name *</label>
+            <input type="text" id="modalSubjectName" class="input-text" placeholder="e.g. Theory of Computation" required>
+          </div>
+          <div class="form-group">
+            <label for="modalSubjectType">Subject Type *</label>
+            <select id="modalSubjectType" class="input-select" required>
+              <option value="Theory">Theory</option>
+              <option value="Practical">Practical / Lab</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modalSubjectDept">Department *</label>
+            <select id="modalSubjectDept" class="input-select" required>
+              <option value="CSE">CSE (Computer Science)</option>
+              <option value="AI-DS">AI-DS (Artificial Intelligence & Data Science)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modalSubjectSem">Semester *</label>
+            <select id="modalSubjectSem" class="input-select" required>
+              <option value="III">3rd Semester (III)</option>
+              <option value="V">5th Semester (V)</option>
+              <option value="VII">7th Semester (VII)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modalSubjectYear">Target Student Class / Year *</label>
+            <select id="modalSubjectYear" class="input-select" required>
+              <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="3rd Year (CSE)">3rd Year (CSE)</option>
+              <option value="4th Year (CSE)">4th Year (CSE)</option>
+              <option value="4th Year (AI-DS)">4th Year (AI-DS)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeSubjectModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Subject</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 7. Allocate Faculty to Subject Modal -->
+  <div id="allocateFacultyModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="allocModalTitle">Allocate Faculty to Subject</h3>
+          <p class="modal-subtitle" id="allocModalSubtitle">CS-501: Theory of Computation</p>
+        </div>
+        <button class="btn-icon" onclick="closeAllocateModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="allocateFacultyForm" onsubmit="handleSaveAllocation(event)">
+        <input type="hidden" id="allocSubjectId" value="">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--slate-600); margin-bottom: 12px;">
+            Select one or more teachers who will be authorized to take attendance for this subject/lab:
+          </p>
+          <div id="allocFacultyCheckboxList" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeAllocateModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Allocations</button>
+        </div>
+      </form>
     </div>
   </div>
 

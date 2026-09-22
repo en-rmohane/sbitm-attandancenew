@@ -42,25 +42,29 @@ function showToast(message, type = 'info') {
 function setQuickLogin(roleKey) {
   document.querySelectorAll('.role-pill-btn').forEach(btn => btn.classList.remove('active'));
   const activeBtn = Array.from(document.querySelectorAll('.role-pill-btn'))
-    .find(b => b.getAttribute('onclick').includes(roleKey));
+    .find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes(roleKey));
   if (activeBtn) activeBtn.classList.add('active');
 
   const usernameInput = document.getElementById('loginUsername');
   const passwordInput = document.getElementById('loginPassword');
 
-  if (roleKey === 'admin') {
-    usernameInput.value = 'admin';
-    passwordInput.value = '112233';
-  } else if (roleKey === 'ravi' || roleKey === 'faculty1') {
-    usernameInput.value = 'ravi';
-    passwordInput.value = '112233';
-  } else if (roleKey === 'khushbu' || roleKey === 'faculty2') {
-    usernameInput.value = 'khushbu';
-    passwordInput.value = '112233';
-  } else if (roleKey === 'jeet' || roleKey === 'jitendra' || roleKey === 'faculty3') {
-    usernameInput.value = 'jeet';
-    passwordInput.value = '112233';
-  }
+  const logins = {
+    'admin': 'admin',
+    'ravi': 'ravi',
+    'satish': 'satish',
+    'sonali': 'sonali',
+    'alka': 'alka',
+    'khushbu': 'khushbu',
+    'ashish': 'ashish',
+    'jeet': 'jeet',
+    'vinay': 'vinay',
+    'pankaj': 'pankaj',
+    'bhavesh': 'bhavesh',
+    'nilesh': 'nilesh'
+  };
+
+  usernameInput.value = logins[roleKey] || roleKey;
+  passwordInput.value = '112233';
 }
 
 // Check session on page load
@@ -126,12 +130,12 @@ function renderAppForUser() {
   document.getElementById('headerUserName').textContent = currentUser.name || currentUser.username;
   document.getElementById('userAvatar').textContent = (currentUser.name || currentUser.username)[0].toUpperCase();
 
-  const roleLabel = currentUser.role === 'admin' ? 'Administrator' : `Faculty (${currentUser.assigned_year})`;
+  const roleLabel = currentUser.role === 'admin' ? 'Administrator' : `Faculty (${currentUser.assigned_year || 'Subject Teacher'})`;
   document.getElementById('headerUserRole').textContent = roleLabel;
 
   const yearBadge = document.getElementById('userYearBadge');
   if (currentUser.role === 'faculty') {
-    yearBadge.innerHTML = `<i data-lucide="book-open"></i> ${currentUser.assigned_year}`;
+    yearBadge.innerHTML = `<i data-lucide="book-open"></i> ${currentUser.assigned_year || 'Faculty Portal'}`;
     yearBadge.style.display = 'inline-flex';
   } else {
     yearBadge.innerHTML = `<i data-lucide="shield-check"></i> All Years (Admin)`;
@@ -142,7 +146,7 @@ function renderAppForUser() {
 
   // Route to default view
   if (currentUser.role === 'faculty') {
-    switchView('faculty-mark');
+    switchView('faculty-subjects');
   } else {
     switchView('admin-dashboard');
   }
@@ -156,13 +160,15 @@ function buildNavigation() {
   let navItems = [];
   if (currentUser.role === 'faculty') {
     navItems = [
-      { id: 'faculty-mark', label: 'Mark Attendance', icon: 'check-square' },
+      { id: 'faculty-subjects', label: 'My Subjects & Labs', icon: 'book-open' },
+      { id: 'faculty-mark', label: 'Daily Attendance', icon: 'calendar-check' },
       { id: 'faculty-history', label: 'My Submissions', icon: 'history' },
       { id: 'reports', label: 'Class Reports', icon: 'bar-chart-3' }
     ];
   } else {
     navItems = [
       { id: 'admin-dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+      { id: 'admin-subjects', label: 'Subjects & Allocations', icon: 'book-marked' },
       { id: 'admin-students', label: 'Students', icon: 'users' },
       { id: 'admin-faculty', label: 'Faculty', icon: 'user-check' },
       { id: 'admin-holidays', label: 'Holidays / Leaves', icon: 'calendar-off' },
@@ -199,7 +205,10 @@ function switchView(viewId) {
   document.querySelectorAll('.view-section').forEach(sec => sec.style.display = 'none');
 
   // Show selected view and trigger its loader
-  if (viewId === 'faculty-mark') {
+  if (viewId === 'faculty-subjects') {
+    document.getElementById('facultySubjectsView').style.display = 'block';
+    initFacultySubjectsView();
+  } else if (viewId === 'faculty-mark') {
     document.getElementById('facultyMarkView').style.display = 'block';
     initFacultyMarkAttendance();
   } else if (viewId === 'faculty-history') {
@@ -208,6 +217,9 @@ function switchView(viewId) {
   } else if (viewId === 'admin-dashboard') {
     document.getElementById('adminDashboardView').style.display = 'block';
     loadAdminDashboard();
+  } else if (viewId === 'admin-subjects') {
+    document.getElementById('adminSubjectsView').style.display = 'block';
+    loadAdminSubjects();
   } else if (viewId === 'admin-students') {
     document.getElementById('adminStudentsView').style.display = 'block';
     loadAdminStudents();
@@ -221,6 +233,10 @@ function switchView(viewId) {
     document.getElementById('reportsView').style.display = 'block';
     initReportsView();
   }
+
+  lucide.createIcons();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
   lucide.createIcons();
   window.scrollTo({ top: 0, behavior: 'smooth' });
