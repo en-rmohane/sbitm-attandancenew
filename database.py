@@ -271,12 +271,33 @@ def get_db_connection():
         pass
     return conn
 
-def init_db():
+_DB_INITIALIZED = False
+
+def init_db(force: bool = False):
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED and not force:
+        return
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Fast skip if already initialized
+    if not force:
+        try:
+            cursor.execute("SELECT COUNT(*) as cnt FROM subjects")
+            row = cursor.fetchone()
+            if row and row['cnt'] >= 50:
+                _DB_INITIALIZED = True
+                conn.close()
+                return
+        except Exception:
+            pass
+
     # Enable foreign keys
-    cursor.execute("PRAGMA foreign_keys = ON;")
+    try:
+        cursor.execute("PRAGMA foreign_keys = ON;")
+    except Exception:
+        pass
 
     # 1. Faculty Table
     cursor.execute("""
