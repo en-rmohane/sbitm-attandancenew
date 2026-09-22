@@ -38,37 +38,113 @@ function showToast(message, type = 'info') {
   }, 4000);
 }
 
-// Quick Login Role Selector
-function setQuickLogin(roleKey) {
-  document.querySelectorAll('.role-pill-btn').forEach(btn => btn.classList.remove('active'));
-  const activeBtn = Array.from(document.querySelectorAll('.role-pill-btn'))
-    .find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes(roleKey));
+// Fetch faculty accounts dynamically for quick login
+let availableFaculties = [];
+
+async function loadFacultyLoginOptions() {
+  try {
+    const res = await fetch('/api/auth/faculty-list');
+    const data = await res.json();
+    if (data.faculties && data.faculties.length > 0) {
+      availableFaculties = data.faculties;
+      populateFacultyDropdown(data.faculties);
+    }
+  } catch (err) {
+    console.warn('Failed to load dynamic faculty list:', err);
+  }
+}
+
+function populateFacultyDropdown(faculties) {
+  const dropdown = document.getElementById('facultyQuickDropdown');
+  if (!dropdown) return;
+
+  const currentVal = dropdown.value;
+  let html = `<option value="">-- Select Faculty / Teacher (${faculties.length - 1} Accounts) --</option>`;
+  
+  faculties.forEach(f => {
+    if (f.role === 'faculty') {
+      html += `<option value="${f.username}">${f.name} (${f.assigned_year} • ${f.subject_count} Subjects)</option>`;
+    }
+  });
+
+  dropdown.innerHTML = html;
+  if (currentVal) dropdown.value = currentVal;
+}
+
+// Quick Login Role Tab Selector
+function selectRoleTab(tabKey) {
+  document.querySelectorAll('.role-tab').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`tab${tabKey.charAt(0).toUpperCase() + tabKey.slice(1)}`);
   if (activeBtn) activeBtn.classList.add('active');
 
   const usernameInput = document.getElementById('loginUsername');
   const passwordInput = document.getElementById('loginPassword');
+  const dropdown = document.getElementById('facultyQuickDropdown');
 
-  const logins = {
-    'admin': 'admin',
-    'ravi': 'ravi',
-    'satish': 'satish',
-    'sonali': 'sonali',
-    'alka': 'alka',
-    'khushbu': 'khushbu',
-    'ashish': 'ashish',
-    'jeet': 'jeet',
-    'vinay': 'vinay',
-    'pankaj': 'pankaj',
-    'bhavesh': 'bhavesh',
-    'nilesh': 'nilesh'
-  };
+  if (tabKey === 'admin') {
+    usernameInput.value = 'admin';
+    passwordInput.value = '112233';
+    if (dropdown) dropdown.value = '';
+    setQuickLogin('admin');
+  } else if (tabKey === 'faculty') {
+    if (dropdown && dropdown.options.length > 1) {
+      dropdown.selectedIndex = 1;
+      onFacultyQuickDropdownChange(dropdown.value);
+    } else {
+      setQuickLogin('ravi');
+    }
+  } else if (tabKey === 'incharge') {
+    // 3rd Year Class Incharge default
+    setQuickLogin('satish');
+  }
+}
 
-  usernameInput.value = logins[roleKey] || roleKey;
+function onFacultyQuickDropdownChange(val) {
+  if (!val) return;
+  setQuickLogin(val);
+}
+
+// Quick Login Role Selector
+function setQuickLogin(roleKey) {
+  document.querySelectorAll('.role-pill-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = Array.from(document.querySelectorAll('.role-pill-btn'))
+    .find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes(`'${roleKey}'`));
+  if (activeBtn) activeBtn.classList.add('active');
+
+  const usernameInput = document.getElementById('loginUsername');
+  const passwordInput = document.getElementById('loginPassword');
+  const dropdown = document.getElementById('facultyQuickDropdown');
+
+  usernameInput.value = roleKey;
   passwordInput.value = '112233';
+
+  if (dropdown && roleKey !== 'admin') {
+    dropdown.value = roleKey;
+  }
+}
+
+function fillDefaultPassword() {
+  const passwordInput = document.getElementById('loginPassword');
+  passwordInput.value = '112233';
+  showToast('Default password (112233) filled!', 'info');
+}
+
+function togglePasswordVisibility() {
+  const passwordInput = document.getElementById('loginPassword');
+  const eyeIcon = document.getElementById('eyeIcon');
+  if (passwordInput.type === 'password') {
+    passwordInput.type = 'text';
+    eyeIcon.setAttribute('data-lucide', 'eye-off');
+  } else {
+    passwordInput.type = 'password';
+    eyeIcon.setAttribute('data-lucide', 'eye');
+  }
+  lucide.createIcons();
 }
 
 // Check session on page load
 async function checkAuthSession() {
+  await loadFacultyLoginOptions();
   try {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
@@ -90,8 +166,14 @@ async function handleLogin(e) {
   const password = document.getElementById('loginPassword').value.trim();
   const btn = document.getElementById('btnLogin');
 
+  if (!username || !password) {
+    showToast('Please enter both username and password.', 'warning');
+    return;
+  }
+
   btn.disabled = true;
-  btn.innerHTML = '<span>Signing In...</span>';
+  btn.innerHTML = '<span class="spin"><i data-lucide="loader-2"></i></span><span>Signing In...</span>';
+  lucide.createIcons();
 
   try {
     const res = await fetch('/api/auth/login', {
@@ -102,9 +184,9 @@ async function handleLogin(e) {
 
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error || 'Login failed', 'error');
+      showToast(data.error || 'Login failed. Please check credentials.', 'error');
       btn.disabled = false;
-      btn.innerHTML = '<span>Sign In to Dashboard</span><i data-lucide="arrow-right"></i>';
+      btn.innerHTML = '<span>Sign In to Portal</span><i data-lucide="arrow-right"></i>';
       lucide.createIcons();
       return;
     }
@@ -113,10 +195,10 @@ async function handleLogin(e) {
     showToast(`Welcome back, ${currentUser.name}!`, 'success');
     renderAppForUser();
   } catch (err) {
-    showToast('Network error during login', 'error');
+    showToast('Network error during login. Please try again.', 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span>Sign In to Dashboard</span><i data-lucide="arrow-right"></i>';
+    btn.innerHTML = '<span>Sign In to Portal</span><i data-lucide="arrow-right"></i>';
     lucide.createIcons();
   }
 }

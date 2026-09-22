@@ -612,6 +612,23 @@ async function onSubjectDateOrSlotChange() {
   }
 }
 
+let currentSubjRosterFilter = 'all'; // 'all' | 'present' | 'absent'
+let currentSubjSearchQuery = '';
+
+function setSubjRosterFilter(filterType) {
+  currentSubjRosterFilter = filterType;
+  document.querySelectorAll('.filter-pills-group .btn-filter-pill').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById(`filterSubj${filterType.charAt(0).toUpperCase() + filterType.slice(1)}`);
+  if (activeBtn) activeBtn.classList.add('active');
+  renderSubjAttendanceStudentList();
+}
+
+function filterSubjStudentRoster() {
+  const searchInput = document.getElementById('subjStudentSearchInput');
+  currentSubjSearchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  renderSubjAttendanceStudentList();
+}
+
 function renderSubjAttendanceStudentList() {
   const tbody = document.getElementById('subjAttendanceTableBody');
   if (subjStudents.length === 0) {
@@ -619,35 +636,62 @@ function renderSubjAttendanceStudentList() {
     return;
   }
 
-  tbody.innerHTML = subjStudents.map(student => {
+  // Apply search query and status filter
+  const filteredList = subjStudents.filter(student => {
+    const status = subjAttendanceState[student.id] || 'Present';
+    if (currentSubjRosterFilter === 'present' && status !== 'Present') return false;
+    if (currentSubjRosterFilter === 'absent' && status !== 'Absent') return false;
+
+    if (currentSubjSearchQuery) {
+      const matchRoll = student.roll_no.toString().toLowerCase().includes(currentSubjSearchQuery);
+      const matchName = student.name.toLowerCase().includes(currentSubjSearchQuery);
+      const matchEnroll = (student.enrollment_no || '').toLowerCase().includes(currentSubjSearchQuery);
+      return matchRoll || matchName || matchEnroll;
+    }
+    return true;
+  });
+
+  if (filteredList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 28px; color: var(--slate-500);"><i data-lucide="search-x" style="display:block; margin: 0 auto 8px; width:24px; height:24px;"></i>No students match filter criteria.</td></tr>`;
+    lucide.createIcons({ root: tbody });
+    return;
+  }
+
+  tbody.innerHTML = filteredList.map(student => {
     const currentStatus = subjAttendanceState[student.id] || 'Present';
     const isPresentActive = currentStatus === 'Present';
     const isAbsentActive = currentStatus === 'Absent';
     const disabledAttr = (isSubjDateBlocked || isSubjAlreadySubmitted) ? 'disabled' : '';
 
     return `
-      <tr id="subj-student-row-${student.id}">
-        <td><strong style="font-size: 14px;">${student.roll_no}</strong></td>
+      <tr id="subj-student-row-${student.id}" style="transition: background 0.15s ease;">
         <td>
-          <div style="font-weight: 600; color: var(--slate-900);">${student.name}</div>
+          <span style="display: inline-block; padding: 3px 8px; background: #e2e8f0; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--slate-800); font-family: monospace;">
+            ${student.roll_no}
+          </span>
+        </td>
+        <td>
+          <div style="font-weight: 600; color: var(--slate-900); font-size: 14px;">${student.name}</div>
           <div style="font-size: 11px; color: var(--slate-500);" class="show-mobile">${student.enrollment_no || ''}</div>
         </td>
-        <td class="hide-mobile" style="color: var(--slate-600);">${student.enrollment_no || '-'}</td>
-        <td>
+        <td class="hide-mobile" style="color: var(--slate-600); font-size: 12.5px;">${student.enrollment_no || '-'}</td>
+        <td style="text-align: center;">
           <div class="attendance-toggle-group">
             <button type="button" class="btn-toggle-att btn-present ${isPresentActive ? 'active' : ''}" 
               onclick="setStudentSubjAttendance(${student.id}, 'Present')" ${disabledAttr}>
-              P (Present)
+              <i data-lucide="check" style="width: 13px; height: 13px; vertical-align: middle;"></i> P
             </button>
             <button type="button" class="btn-toggle-att btn-absent ${isAbsentActive ? 'active' : ''}" 
               onclick="setStudentSubjAttendance(${student.id}, 'Absent')" ${disabledAttr}>
-              A (Absent)
+              <i data-lucide="x" style="width: 13px; height: 13px; vertical-align: middle;"></i> A
             </button>
           </div>
         </td>
       </tr>
     `;
   }).join('');
+
+  lucide.createIcons({ root: tbody });
 }
 
 function setStudentSubjAttendance(studentId, status) {
@@ -697,6 +741,12 @@ function updateSubjAttendanceCounters() {
   document.getElementById('subjTotalStudentCount').textContent = total;
   document.getElementById('subjPresentCount').textContent = present;
   document.getElementById('subjAbsentCount').textContent = absent;
+
+  // Update filter pill counters if needed
+  const filterPresBtn = document.getElementById('filterSubjPresent');
+  const filterAbsBtn = document.getElementById('filterSubjAbsent');
+  if (filterPresBtn) filterPresBtn.textContent = `Present (${present})`;
+  if (filterAbsBtn) filterAbsBtn.textContent = `Absent (${absent})`;
 }
 
 async function submitSubjAttendanceData() {

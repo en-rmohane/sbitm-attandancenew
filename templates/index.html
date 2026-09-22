@@ -23,62 +23,123 @@
   <div id="loginScreen" class="auth-wrapper">
     <div class="auth-card">
       <div class="auth-header">
-        <div class="brand-logo">
-          <i data-lucide="graduation-cap" class="brand-icon"></i>
+        <div class="brand-logo-ring">
+          <div class="brand-logo">
+            <i data-lucide="graduation-cap" class="brand-icon"></i>
+          </div>
+        </div>
+        <div class="college-tag">
+          <i data-lucide="award"></i> SBITM BETUL • ATTENDANCE PORTAL
         </div>
         <h1 class="brand-title">EduAttend Pro</h1>
-        <p class="brand-subtitle">Student Attendance Management Portal</p>
+        <p class="brand-subtitle">Subject Lecture & Student Attendance System</p>
       </div>
 
-      <div class="quick-roles-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
-        <button type="button" class="role-pill-btn active" onclick="setQuickLogin('admin')">
-          <i data-lucide="shield-check"></i> Admin
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('ravi')">
-          <i data-lucide="user"></i> Ravi (OOPM)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('satish')">
-          <i data-lucide="user"></i> Satish (TOC)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('sonali')">
-          <i data-lucide="user"></i> Sonali (DBMS)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('alka')">
-          <i data-lucide="user"></i> Alka (Soft. Arch)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('khushbu')">
-          <i data-lucide="user"></i> Khushbu (Cyber)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('ashish')">
-          <i data-lucide="user"></i> Ashish (ML)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('jeet')">
-          <i data-lucide="user"></i> Jeet (Data Mining)
-        </button>
-        <button type="button" class="role-pill-btn" onclick="setQuickLogin('vinay')">
-          <i data-lucide="user"></i> Vinay (Internship)
-        </button>
+      <!-- Quick Role & Account Selector Tabs -->
+      <div class="quick-login-box">
+        <div class="quick-login-header">
+          <span><i data-lucide="users"></i> Quick Select Teacher / Role:</span>
+        </div>
+        
+        <!-- Role Category Selector -->
+        <div class="role-tabs-segmented">
+          <button type="button" class="role-tab active" id="tabAdmin" onclick="selectRoleTab('admin')">
+            <i data-lucide="shield-check"></i> Admin
+          </button>
+          <button type="button" class="role-tab" id="tabFaculty" onclick="selectRoleTab('faculty')">
+            <i data-lucide="user-check"></i> Faculty (18)
+          </button>
+          <button type="button" class="role-tab" id="tabClassIncharge" onclick="selectRoleTab('incharge')">
+            <i data-lucide="calendar"></i> Class Incharge
+          </button>
+        </div>
+
+        <!-- Faculty Dropdown & Quick Chips -->
+        <div id="facultyPickerSection" style="margin-top: 10px;">
+          <select id="facultyQuickDropdown" class="faculty-quick-select" onchange="onFacultyQuickDropdownChange(this.value)">
+            <option value="">-- Choose Faculty Account --</option>
+            <option value="ravi">Prof. Ravi Kumar Mohane (OOPM / OS)</option>
+            <option value="alka">Prof. Alka Narware (Soft. Arch / Data Science)</option>
+            <option value="satish">Prof. Satish Chadokar (TOC / Compiler)</option>
+            <option value="sonali">Prof. Sonali Rathore (DBMS / OOPS)</option>
+            <option value="khushbu">Prof. Khushbu Parte (Cyber Security / Algo)</option>
+            <option value="ashish">Prof. Ashish Gawande (Machine Learning / Python)</option>
+            <option value="jeet">Prof. Jitendra Barmase (Data Mining / Cloud)</option>
+            <option value="bhavesh">Prof. Bhavesh (Data Analytics / AI)</option>
+            <option value="nilesh">Prof. Nilesh Mishra (Software Engg / Java)</option>
+            <option value="pankaj">Dr. Pankaj Singh Sisodiya (Maths / Discrete Structures)</option>
+            <option value="shashank">Prof. Shashank Mane (Computer Networks)</option>
+            <option value="rishu">Prof. Rishu Dangi (Web Tech / UI)</option>
+            <option value="malvi">Prof. V. K. Malvi (Basic Electrical / Electronics)</option>
+            <option value="deepika">Prof. Deepika Malviya (Digital Electronics)</option>
+            <option value="pushpa">Prof. Pushpa (AI Fundamentals)</option>
+            <option value="pramila">Prof. Pramila Gharjale (Database Systems)</option>
+            <option value="pjshah">Dr. P. J. Shah (Engg Physics / Lab)</option>
+            <option value="vinay">Prof. Vinay Sahu (Industrial Training / Project)</option>
+          </select>
+
+          <!-- Quick Access Popular Chips -->
+          <div class="quick-roles-pills" id="quickPillsList">
+            <button type="button" class="role-pill-btn active" onclick="setQuickLogin('admin')">
+              <i data-lucide="shield-check"></i> Admin
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('ravi')">
+              <i data-lucide="user"></i> Ravi Sir
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('alka')">
+              <i data-lucide="user"></i> Alka Mam
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('satish')">
+              <i data-lucide="user"></i> Satish Sir
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('sonali')">
+              <i data-lucide="user"></i> Sonali Mam
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('khushbu')">
+              <i data-lucide="user"></i> Khushbu Mam
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('ashish')">
+              <i data-lucide="user"></i> Ashish Sir
+            </button>
+            <button type="button" class="role-pill-btn" onclick="setQuickLogin('jeet')">
+              <i data-lucide="user"></i> Jeet Sir
+            </button>
+          </div>
+        </div>
       </div>
 
       <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label for="loginUsername">Username / ID</label>
+          <label for="loginUsername">Username / Teacher ID</label>
           <div class="input-with-icon">
             <i data-lucide="user-check"></i>
-            <input type="text" id="loginUsername" placeholder="e.g. admin or prof.ravi" required autofocus>
+            <input type="text" id="loginUsername" value="admin" placeholder="e.g. admin or alka or ravi" required autofocus autocomplete="username">
           </div>
         </div>
 
         <div class="form-group">
-          <label for="loginPassword">Password</label>
-          <div class="input-with-icon">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label for="loginPassword" style="margin-bottom: 0;">Password</label>
+            <span class="password-hint-pill" onclick="fillDefaultPassword()" title="Click to fill default password">
+              Default: <strong>112233</strong>
+            </span>
+          </div>
+          <div class="input-with-icon password-wrap">
             <i data-lucide="lock"></i>
-            <input type="password" id="loginPassword" placeholder="••••••••" required>
+            <input type="password" id="loginPassword" value="112233" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="btn-toggle-eye" onclick="togglePasswordVisibility()" title="Show/Hide Password">
+              <i data-lucide="eye" id="eyeIcon"></i>
+            </button>
           </div>
         </div>
 
-        <button type="submit" id="btnLogin" class="btn btn-primary btn-block">
-          <span>Sign In to Dashboard</span>
+        <div class="auth-help-banner">
+          <i data-lucide="key-round"></i>
+          <span>Password for all faculty accounts is <strong>112233</strong></span>
+        </div>
+
+        <button type="submit" id="btnLogin" class="btn btn-primary btn-block btn-login-glow">
+          <span>Sign In to Portal</span>
           <i data-lucide="arrow-right"></i>
         </button>
       </form>
@@ -219,6 +280,19 @@
               <button type="button" class="btn btn-outline-danger" onclick="markAllSubject('Absent')">
                 <i data-lucide="x-circle"></i> Mark All Absent
               </button>
+            </div>
+          </div>
+
+          <!-- Quick Search & Filter Bar -->
+          <div class="table-search-bar" style="display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+            <div class="input-with-icon" style="flex: 1; min-width: 220px;">
+              <i data-lucide="search"></i>
+              <input type="text" id="subjStudentSearchInput" placeholder="Search by Roll No or Student Name..." oninput="filterSubjStudentRoster()" style="height: 38px; border-radius: var(--radius-md); font-size: 13px;">
+            </div>
+            <div class="filter-pills-group" style="display: flex; gap: 6px;">
+              <button type="button" class="btn-filter-pill active" id="filterSubjAll" onclick="setSubjRosterFilter('all')">All</button>
+              <button type="button" class="btn-filter-pill" id="filterSubjPresent" onclick="setSubjRosterFilter('present')">Present</button>
+              <button type="button" class="btn-filter-pill" id="filterSubjAbsent" onclick="setSubjRosterFilter('absent')">Absent</button>
             </div>
           </div>
 
