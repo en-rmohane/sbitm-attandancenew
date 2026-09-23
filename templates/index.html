@@ -363,6 +363,7 @@
               <label for="facultyClassSelect"><i data-lucide="book-open"></i> Class / Branch</label>
               <select id="facultyClassSelect" class="input-select" style="padding: 6px 12px; font-size: 14px; min-width: 170px;" onchange="onFacultyClassChange()">
                 <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
                 <option value="3rd Year (CSE)">3rd Year (CSE)</option>
                 <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
                 <option value="4th Year (CSE)">4th Year (CSE)</option>
@@ -488,6 +489,13 @@
               <h3 class="kpi-val" id="dash2ndYearStudents">0</h3>
             </div>
           </div>
+          <div class="kpi-card card-year2">
+            <div class="kpi-icon"><i data-lucide="brain"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">2nd Year (AI-DS)</span>
+              <h3 class="kpi-val" id="dash2ndAidsStudents">0</h3>
+            </div>
+          </div>
           <div class="kpi-card card-year3">
             <div class="kpi-icon"><i data-lucide="book-open"></i></div>
             <div class="kpi-info">
@@ -581,6 +589,7 @@
               <select id="studentYearFilter" class="input-select" onchange="filterStudentsList()">
                 <option value="">All Classes & Branches</option>
                 <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
                 <option value="3rd Year (CSE)">3rd Year (CSE)</option>
                 <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
                 <option value="4th Year (CSE)">4th Year (CSE)</option>
@@ -763,6 +772,7 @@
               <label for="reportYearSelect">Class / Branch</label>
               <select id="reportYearSelect" class="input-select" onchange="fetchReportData()">
                 <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+                <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
                 <option value="3rd Year (CSE)">3rd Year (CSE)</option>
                 <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
                 <option value="4th Year (CSE)">4th Year (CSE)</option>
@@ -862,6 +872,7 @@
             <label for="modalStudentYear">Assigned Class / Branch *</label>
             <select id="modalStudentYear" class="input-select" required>
               <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
               <option value="3rd Year (CSE)">3rd Year (CSE)</option>
               <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
               <option value="4th Year (CSE)">4th Year (CSE)</option>
@@ -941,6 +952,7 @@
             <label for="modalFacultyYear">Assigned Class / Branch *</label>
             <select id="modalFacultyYear" class="input-select" required>
               <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
               <option value="3rd Year (CSE)">3rd Year (CSE)</option>
               <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
               <option value="4th Year (CSE)">4th Year (CSE)</option>
@@ -1059,6 +1071,7 @@
             <label for="modalSubjectYear">Target Student Class / Year *</label>
             <select id="modalSubjectYear" class="input-select" required>
               <option value="2nd Year (CSE)">2nd Year (CSE)</option>
+              <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
               <option value="3rd Year (CSE)">3rd Year (CSE)</option>
               <option value="3rd Year (AI-DS)">3rd Year (AI-DS)</option>
               <option value="4th Year (CSE)">4th Year (CSE)</option>
