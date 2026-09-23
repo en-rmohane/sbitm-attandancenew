@@ -767,9 +767,28 @@
 
         <!-- Filter Controls -->
         <div class="card report-filter-card">
+          <!-- Report Type Switcher -->
+          <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap;">
+            <button type="button" id="btnReportTypeSubject" class="btn btn-sm btn-primary" onclick="setReportType('subject')">
+              <i data-lucide="book-open"></i> Subject-Wise Report
+            </button>
+            <button type="button" id="btnReportTypeClass" class="btn btn-sm btn-outline" onclick="setReportType('class')">
+              <i data-lucide="calendar-check"></i> Daily Class Matrix (Coordinator)
+            </button>
+          </div>
+
           <div class="report-filters-grid">
-            <div class="filter-item">
-              <label for="reportYearSelect">Class / Branch</label>
+            <!-- 1. Subject Select Box -->
+            <div class="filter-item" id="reportSubjectBox">
+              <label for="reportSubjectSelect"><i data-lucide="book-marked"></i> Select Allocated Subject</label>
+              <select id="reportSubjectSelect" class="input-select" onchange="fetchReportData()">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <!-- 2. Class Select Box -->
+            <div class="filter-item" id="reportClassBox" style="display: none;">
+              <label for="reportYearSelect"><i data-lucide="users"></i> Class / Branch</label>
               <select id="reportYearSelect" class="input-select" onchange="fetchReportData()">
                 <option value="2nd Year (CSE)">2nd Year (CSE)</option>
                 <option value="2nd Year (AI-DS)">2nd Year (AI-DS)</option>
@@ -780,7 +799,7 @@
               </select>
             </div>
 
-            <div class="filter-item">
+            <div class="filter-item" id="reportPresetBox" style="display: none;">
               <label>Quick Presets</label>
               <div class="preset-btn-group">
                 <button type="button" id="btnPresetSession" class="btn btn-preset active" onclick="setReportPreset('session')">Session (From 31 Aug)</button>

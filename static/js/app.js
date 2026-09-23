@@ -212,17 +212,27 @@ function renderAppForUser() {
   document.getElementById('headerUserName').textContent = currentUser.name || currentUser.username;
   document.getElementById('userAvatar').textContent = (currentUser.name || currentUser.username)[0].toUpperCase();
 
-  const roleLabel = currentUser.role === 'admin' ? 'Administrator' : `Faculty (${currentUser.assigned_year || 'Subject Teacher'})`;
-  document.getElementById('headerUserRole').textContent = roleLabel;
-
+  let roleLabel = 'Administrator';
   const yearBadge = document.getElementById('userYearBadge');
+
   if (currentUser.role === 'faculty') {
-    yearBadge.innerHTML = `<i data-lucide="book-open"></i> ${currentUser.assigned_year || 'Faculty Portal'}`;
-    yearBadge.style.display = 'inline-flex';
+    if (currentUser.is_coordinator) {
+      const classStr = (currentUser.coordinated_classes || []).join(', ');
+      roleLabel = `Class Coordinator (${classStr})`;
+      yearBadge.innerHTML = `<i data-lucide="award"></i> Coordinator: ${classStr}`;
+      yearBadge.style.display = 'inline-flex';
+    } else {
+      roleLabel = 'Faculty (Subject Teacher)';
+      yearBadge.innerHTML = `<i data-lucide="book-open"></i> Subject Faculty`;
+      yearBadge.style.display = 'inline-flex';
+    }
   } else {
-    yearBadge.innerHTML = `<i data-lucide="shield-check"></i> All Years (Admin)`;
+    roleLabel = 'Administrator';
+    yearBadge.innerHTML = `<i data-lucide="shield-check"></i> Admin Portal`;
     yearBadge.style.display = 'inline-flex';
   }
+
+  document.getElementById('headerUserRole').textContent = roleLabel;
 
   buildNavigation();
 
@@ -241,12 +251,20 @@ function buildNavigation() {
 
   let navItems = [];
   if (currentUser.role === 'faculty') {
-    navItems = [
-      { id: 'faculty-subjects', label: 'My Subjects & Labs', icon: 'book-open' },
-      { id: 'faculty-mark', label: 'Daily Attendance', icon: 'calendar-check' },
-      { id: 'faculty-history', label: 'My Submissions', icon: 'history' },
-      { id: 'reports', label: 'Class Reports', icon: 'bar-chart-3' }
-    ];
+    if (currentUser.is_coordinator) {
+      navItems = [
+        { id: 'faculty-subjects', label: 'My Subjects & Labs', icon: 'book-open' },
+        { id: 'faculty-mark', label: 'Daily Class Attendance', icon: 'calendar-check', badge: 'Coordinator' },
+        { id: 'faculty-history', label: 'My Submissions', icon: 'history' },
+        { id: 'reports', label: 'Attendance Reports', icon: 'bar-chart-3' }
+      ];
+    } else {
+      navItems = [
+        { id: 'faculty-subjects', label: 'My Subjects & Labs', icon: 'book-open' },
+        { id: 'faculty-history', label: 'My Submissions', icon: 'history' },
+        { id: 'reports', label: 'Subject Reports', icon: 'bar-chart-3' }
+      ];
+    }
   } else {
     navItems = [
       { id: 'admin-dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
@@ -262,6 +280,7 @@ function buildNavigation() {
     <button class="nav-link" id="nav-${item.id}" onclick="switchView('${item.id}')">
       <i data-lucide="${item.icon}"></i>
       <span>${item.label}</span>
+      ${item.badge ? `<span class="nav-badge" style="background: rgba(37,99,235,0.15); color: #2563eb; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: auto;">${item.badge}</span>` : ''}
     </button>
   `).join('');
 

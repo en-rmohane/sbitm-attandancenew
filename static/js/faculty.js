@@ -18,19 +18,25 @@ function getCurrentSelectedFacultyClass() {
 // Initialize Faculty Mark Attendance View
 async function initFacultyMarkAttendance() {
   const classSelect = document.getElementById('facultyClassSelect');
-  const assignedYear = currentUser.assigned_year || '3rd Year (CSE)';
   
   if (classSelect) {
-    // Select faculty's assigned class by default
-    const matchingOption = Array.from(classSelect.options).find(o => o.value === assignedYear || o.value.includes(assignedYear));
-    if (matchingOption) {
-      classSelect.value = matchingOption.value;
+    if (currentUser.role === 'faculty' && currentUser.is_coordinator && currentUser.coordinated_classes) {
+      const allowed = currentUser.coordinated_classes;
+      classSelect.innerHTML = allowed.map(c => `<option value="${c}">${c}</option>`).join('');
+      classSelect.value = allowed[0];
+      if (allowed.length <= 1) {
+        document.getElementById('facultyClassSelectBox').style.opacity = '0.9';
+      }
+    } else if (currentUser.role === 'admin') {
+      // Keep full list for admin
+      const allClasses = ['2nd Year (CSE)', '2nd Year (AI-DS)', '3rd Year (CSE)', '3rd Year (AI-DS)', '4th Year (CSE)', '4th Year (AI-DS)'];
+      classSelect.innerHTML = allClasses.map(c => `<option value="${c}">${c}</option>`).join('');
     }
   }
 
   const selectedYear = getCurrentSelectedFacultyClass();
   const yearHeader = document.getElementById('facultyYearHeader');
-  if (yearHeader) yearHeader.textContent = `${selectedYear} Daily Attendance`;
+  if (yearHeader) yearHeader.textContent = `${selectedYear} Daily Class Attendance`;
 
   // Set default date to today (YYYY-MM-DD)
   const dateInput = document.getElementById('attendanceDateInput');
@@ -51,7 +57,7 @@ async function initFacultyMarkAttendance() {
 async function onFacultyClassChange() {
   const selectedYear = getCurrentSelectedFacultyClass();
   const yearHeader = document.getElementById('facultyYearHeader');
-  if (yearHeader) yearHeader.textContent = `${selectedYear} Daily Attendance`;
+  if (yearHeader) yearHeader.textContent = `${selectedYear} Daily Class Attendance`;
   await loadFacultyStudents();
   await onAttendanceDateChange();
 }
@@ -322,42 +328,35 @@ async function submitAttendanceData() {
   }
 }
 
-// Load Faculty Submission History
+// Load Faculty Submission History (Subject Sessions + Coordinated Classes)
 async function loadFacultyHistory() {
   const tbody = document.getElementById('facultyHistoryTableBody');
-  const year = currentUser.assigned_year || '2nd Year';
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;">Loading submission logs...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;">Loading your submission logs...</td></tr>`;
 
   try {
-    const res = await fetch('/api/admin/dashboard');
+    const res = await fetch('/api/faculty/subject-attendance/history');
     const data = await res.json();
-    
-    // Filter recent submissions for this faculty's year
-    const mySubmissions = (data.recent_submissions || []).filter(s => s.year === year);
+    const history = data.history || [];
 
-    if (mySubmissions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 32px; color: var(--slate-500);">No attendance records found for ${year}.</td></tr>`;
+    if (history.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 32px; color: var(--slate-500);">No subject attendance sessions submitted by you yet. Take attendance for your subjects in 'My Subjects & Labs'.</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = mySubmissions.map(item => `
+    tbody.innerHTML = history.map(item => `
       <tr>
         <td><strong>${item.date}</strong></td>
-        <td><span class="badge badge-indigo">${item.year}</span></td>
-        <td>${item.submitted_at || '-'}</td>
+        <td><span class="badge badge-indigo">${item.subject_code} - ${item.subject_name}</span></td>
+        <td><span class="badge badge-slate">${item.slot || 'Lecture'}</span></td>
+        <td>${item.submitted_at ? item.submitted_at.split(' ')[1] || item.submitted_at : '-'}</td>
         <td><span class="status-badge status-submitted">${item.present_count || 0} Present</span></td>
         <td><span class="status-badge status-pending">${item.absent_count || 0} Absent</span></td>
-        <td><strong>${item.student_count || 0} Students</strong></td>
-        <td>
-          <button class="btn btn-outline btn-xs" onclick="viewHistoryDate('${item.date}')">
-            <i data-lucide="eye"></i> View
-          </button>
-        </td>
+        <td><strong>${item.total_students || 0} Marked</strong></td>
       </tr>
     `).join('');
     lucide.createIcons();
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger);">Failed to load history.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger);">Failed to load your history.</td></tr>`;
   }
 }
 

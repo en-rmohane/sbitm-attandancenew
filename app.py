@@ -107,6 +107,29 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# --- Class Coordinators Configuration ---
+CLASS_COORDINATORS = {
+    'ravi': ['2nd Year (CSE)'],
+    'khushbu': ['3rd Year (CSE)'],
+    'jeet': ['4th Year (CSE)'],
+    'deepika': ['2nd Year (AI-DS)', '3rd Year (AI-DS)', '4th Year (AI-DS)']
+}
+
+CLASS_COORDINATOR_DETAILS = {
+    '2nd Year (CSE)': {'username': 'ravi', 'name': 'Prof. Ravi Kumar Mohane', 'branch': 'CSE', 'sem': 'III'},
+    '3rd Year (CSE)': {'username': 'khushbu', 'name': 'Prof. Khushbu Soni', 'branch': 'CSE', 'sem': 'V'},
+    '4th Year (CSE)': {'username': 'jeet', 'name': 'Prof. Jitendra Singh', 'branch': 'CSE', 'sem': 'VII'},
+    '2nd Year (AI-DS)': {'username': 'deepika', 'name': 'Prof. Deepika Malviya', 'branch': 'AI-DS', 'sem': 'III'},
+    '3rd Year (AI-DS)': {'username': 'deepika', 'name': 'Prof. Deepika Malviya', 'branch': 'AI-DS', 'sem': 'V'},
+    '4th Year (AI-DS)': {'username': 'deepika', 'name': 'Prof. Deepika Malviya', 'branch': 'AI-DS', 'sem': 'VII'}
+}
+
+def get_coordinator_info(username):
+    uname = (username or '').lower().strip()
+    if uname in CLASS_COORDINATORS:
+        return True, CLASS_COORDINATORS[uname]
+    return False, []
+
 # --- Routes ---
 
 @app.route('/')
@@ -130,14 +153,20 @@ def get_faculty_login_list():
     
     faculties = []
     for r in rows:
+        uname = r['username'] or ''
+        is_coord, coord_classes = get_coordinator_info(uname)
+        role_label = 'Admin' if r['role'] == 'admin' else ('Class Coordinator & Faculty' if is_coord else 'Subject Faculty')
         faculties.append({
             'id': r['id'],
-            'username': r['username'],
+            'username': uname,
             'role': r['role'],
             'faculty_id': r['faculty_id'],
-            'name': r['faculty_name'] or ('Administrator' if r['role'] == 'admin' else r['username']),
+            'name': r['faculty_name'] or ('Administrator' if r['role'] == 'admin' else uname),
             'assigned_year': r['assigned_year'] or 'Admin',
-            'subject_count': r['subject_count'] or 0
+            'subject_count': r['subject_count'] or 0,
+            'is_coordinator': is_coord,
+            'coordinated_classes': coord_classes,
+            'role_label': role_label
         })
     return jsonify({'faculties': faculties})
 
@@ -179,12 +208,16 @@ def login():
     if not user or not is_valid_pass:
         return jsonify({'error': 'Invalid username or password. Default password is 112233'}), 401
 
+    is_coord, coord_classes = get_coordinator_info(user['username'])
+
     session['user_id'] = user['id']
     session['username'] = user['username']
     session['role'] = user['role']
     session['faculty_id'] = user['faculty_id']
     session['assigned_year'] = user['assigned_year']
     session['display_name'] = user['faculty_name'] if user['role'] == 'faculty' else 'Administrator'
+    session['is_coordinator'] = is_coord
+    session['coordinated_classes'] = coord_classes
     session.permanent = True
 
     return jsonify({
@@ -195,7 +228,9 @@ def login():
             'role': user['role'],
             'faculty_id': user['faculty_id'],
             'assigned_year': user['assigned_year'],
-            'name': session['display_name']
+            'name': session['display_name'],
+            'is_coordinator': is_coord,
+            'coordinated_classes': coord_classes
         }
     })
 
@@ -204,15 +239,20 @@ def get_current_user():
     if 'user_id' not in session:
         return jsonify({'authenticated': False}), 200
 
+    uname = session.get('username')
+    is_coord, coord_classes = get_coordinator_info(uname)
+
     return jsonify({
         'authenticated': True,
         'user': {
             'id': session.get('user_id'),
-            'username': session.get('username'),
+            'username': uname,
             'role': session.get('role'),
             'faculty_id': session.get('faculty_id'),
             'assigned_year': session.get('assigned_year'),
-            'name': session.get('display_name')
+            'name': session.get('display_name'),
+            'is_coordinator': is_coord,
+            'coordinated_classes': coord_classes
         }
     })
 
@@ -226,9 +266,16 @@ def logout():
 @login_required
 def get_faculty_students():
     year = request.args.get('year')
-    # If faculty, force their assigned year
-    if session.get('role') == 'faculty':
-        year = session.get('assigned_year')
+    role = session.get('role')
+    uname = session.get('username')
+    is_coord, coord_classes = get_coordinator_info(uname)
+
+    if role == 'faculty':
+        if is_coord:
+            if not year or year not in coord_classes:
+                year = coord_classes[0]
+        else:
+            year = session.get('assigned_year')
 
     if not year:
         return jsonify({'error': 'Year parameter is required'}), 400
@@ -251,9 +298,16 @@ def get_faculty_students():
 def check_date():
     year = request.args.get('year')
     date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    role = session.get('role')
+    uname = session.get('username')
+    is_coord, coord_classes = get_coordinator_info(uname)
 
-    if session.get('role') == 'faculty':
-        year = session.get('assigned_year')
+    if role == 'faculty':
+        if is_coord:
+            if not year or year not in coord_classes:
+                year = coord_classes[0]
+        else:
+            year = session.get('assigned_year')
 
     if not year or not date_str:
         return jsonify({'error': 'Year and Date are required'}), 400
@@ -313,10 +367,16 @@ def submit_attendance():
     year = data.get('year')
     date_str = data.get('date')
     records = data.get('records', []) # [{'student_id': 1, 'status': 'Present'}]
+    role = session.get('role')
+    uname = session.get('username')
+    is_coord, coord_classes = get_coordinator_info(uname)
 
-    # Role check: Faculty can only submit for assigned year
-    if session.get('role') == 'faculty':
-        year = session.get('assigned_year')
+    # Role check: Faculty must be designated coordinator for this year/branch
+    if role == 'faculty':
+        if not is_coord or year not in coord_classes:
+            coord_detail = CLASS_COORDINATOR_DETAILS.get(year, {})
+            c_name = coord_detail.get('name', 'Designated Coordinator')
+            return jsonify({'error': f'Only the designated Class Coordinator ({c_name}) can submit daily class attendance for {year}.'}), 403
 
     if not year or not date_str or not records:
         return jsonify({'error': 'Year, Date, and student records are required'}), 400
@@ -629,18 +689,142 @@ def get_subject_attendance_history():
     if subject_id:
         query += " AND sa.subject_id = ?"
         params.append(subject_id)
-    elif role != 'admin' and faculty_id:
+
+    # Strictly filter by logged-in faculty_id if role is faculty
+    if role != 'admin':
+        if not faculty_id:
+            conn.close()
+            return jsonify({'history': []})
         query += " AND sa.faculty_id = ?"
         params.append(faculty_id)
 
-    query += " GROUP BY sa.id ORDER BY sa.date DESC, sa.submitted_at DESC LIMIT 30"
+    query += " GROUP BY sa.id ORDER BY sa.date DESC, sa.submitted_at DESC LIMIT 50"
     cursor.execute(query, params)
     history = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
     return jsonify({'history': history})
 
-# 3. Admin Dashboard & Logs APIs
+# 3. Dedicated Subject Attendance Report API
+@app.route('/api/reports/subject-attendance', methods=['GET'])
+@login_required
+def get_subject_attendance_report():
+    subject_id = request.args.get('subject_id')
+    if not subject_id:
+        return jsonify({'error': 'subject_id parameter is required'}), 400
+
+    faculty_id = session.get('faculty_id')
+    role = session.get('role')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,))
+    subj = cursor.fetchone()
+    if not subj:
+        conn.close()
+        return jsonify({'error': 'Subject not found'}), 404
+
+    # Security check: faculty can only view allocated subjects
+    if role != 'admin':
+        cursor.execute("SELECT id FROM subject_allocations WHERE subject_id = ? AND faculty_id = ?", (subject_id, faculty_id))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'error': 'Access denied: You are not allocated to this subject'}), 403
+
+    # Get all lecture sessions conducted for this subject
+    query_sessions = """
+        SELECT sa.id, sa.date, sa.slot, sa.topic, sa.submitted_at, f.name as faculty_name
+        FROM subject_attendance sa
+        LEFT JOIN faculty f ON sa.faculty_id = f.id
+        WHERE sa.subject_id = ?
+    """
+    params_sessions = [subject_id]
+    if role != 'admin':
+        query_sessions += " AND sa.faculty_id = ?"
+        params_sessions.append(faculty_id)
+
+    query_sessions += " ORDER BY sa.date ASC, sa.slot ASC, sa.id ASC"
+    cursor.execute(query_sessions, params_sessions)
+    sessions_list = [dict(r) for r in cursor.fetchall()]
+
+    # Get active students for subject's year
+    cursor.execute("""
+        SELECT id, roll_no, name, enrollment_no
+        FROM students
+        WHERE year = ? AND status = 'active'
+        ORDER BY CAST(roll_no AS INTEGER), roll_no ASC
+    """, (subj['year'],))
+    students = [dict(r) for r in cursor.fetchall()]
+
+    total_lectures = len(sessions_list)
+    session_ids = [s['id'] for s in sessions_list]
+
+    # Map (student_id, session_id) -> status
+    att_map = {}
+    if session_ids:
+        placeholders = ','.join(['?'] * len(session_ids))
+        cursor.execute(f"""
+            SELECT sar.subject_attendance_id, sar.student_id, sar.status
+            FROM subject_attendance_records sar
+            WHERE sar.subject_attendance_id IN ({placeholders})
+        """, session_ids)
+        for r in cursor.fetchall():
+            att_map[(r['student_id'], r['subject_attendance_id'])] = r['status']
+
+    students_report = []
+    total_p = 0
+    total_a = 0
+
+    for st in students:
+        s_id = st['id']
+        lecture_records = {}
+        present_cnt = 0
+        absent_cnt = 0
+
+        for sess in sessions_list:
+            sess_id = sess['id']
+            stat = att_map.get((s_id, sess_id), '-')
+            lecture_records[str(sess_id)] = stat
+            if stat == 'Present':
+                present_cnt += 1
+            elif stat == 'Absent':
+                absent_cnt += 1
+
+        pct = round((present_cnt / total_lectures * 100), 2) if total_lectures > 0 else 0.0
+        total_p += present_cnt
+        total_a += absent_cnt
+
+        students_report.append({
+            'id': st['id'],
+            'roll_no': st['roll_no'],
+            'name': st['name'],
+            'enrollment_no': st['enrollment_no'] or '-',
+            'lectures': lecture_records,
+            'present_count': present_cnt,
+            'absent_count': absent_cnt,
+            'total_conducted': total_lectures,
+            'percentage': pct
+        })
+
+    max_possible = len(students) * total_lectures
+    avg_pct = round((total_p / max_possible * 100), 2) if max_possible > 0 else 0.0
+
+    conn.close()
+
+    return jsonify({
+        'subject': dict(subj),
+        'total_lectures': total_lectures,
+        'sessions': sessions_list,
+        'students_report': students_report,
+        'summary': {
+            'total_students': len(students),
+            'total_lectures': total_lectures,
+            'subject_average_percentage': avg_pct
+        }
+    })
+
+# 4. Admin Dashboard & Activity APIs
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
 def get_admin_dashboard():
@@ -655,17 +839,17 @@ def get_admin_dashboard():
     cursor.execute("SELECT DISTINCT year FROM students WHERE status = 'active' ORDER BY year ASC")
     active_classes = [r['year'] for r in cursor.fetchall()]
     if not active_classes:
-        active_classes = ['2nd Year (CSE)', '3rd Year (CSE)', '4th Year (CSE)', '4th Year (AI-DS)']
+        active_classes = list(CLASS_COORDINATOR_DETAILS.keys())
 
     year_counts = {}
     for yr in active_classes:
         cursor.execute("SELECT COUNT(*) as count FROM students WHERE year = ? AND status = 'active'", (yr,))
         year_counts[yr] = cursor.fetchone()['count']
 
-    # Today's attendance status
+    # Today's attendance status with Designated Coordinator Info
     today_str = datetime.now().strftime('%Y-%m-%d')
     today_status = {}
-    for yr in active_classes:
+    for yr, coord_info in CLASS_COORDINATOR_DETAILS.items():
         cursor.execute("""
             SELECT a.id, a.submitted_at, f.name as faculty_name
             FROM attendance a
@@ -676,19 +860,25 @@ def get_admin_dashboard():
         if row:
             today_status[yr] = {
                 'status': 'Submitted',
-                'faculty': row['faculty_name'] or 'Faculty',
+                'faculty': row['faculty_name'] or coord_info['name'],
+                'designated_coordinator': coord_info['name'],
+                'coordinator_username': coord_info['username'],
                 'submitted_at': row['submitted_at']
             }
         else:
             today_status[yr] = {
                 'status': 'Pending',
                 'faculty': None,
+                'designated_coordinator': coord_info['name'],
+                'coordinator_username': coord_info['username'],
                 'submitted_at': None
             }
 
-    # Recent 8 attendance submissions
+    # Recent Class Submissions
     cursor.execute("""
         SELECT a.id, a.year, a.date, a.submitted_at, f.name as faculty_name,
+               'daily' as type,
+               'Daily Class Attendance' as title,
                COUNT(ar.id) as student_count,
                SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END) as present_count,
                SUM(CASE WHEN ar.status = 'Absent' THEN 1 ELSE 0 END) as absent_count
@@ -696,10 +886,33 @@ def get_admin_dashboard():
         LEFT JOIN faculty f ON a.faculty_id = f.id
         LEFT JOIN attendance_records ar ON a.id = ar.attendance_id
         GROUP BY a.id
-        ORDER BY a.date DESC, a.submitted_at DESC
+        ORDER BY a.submitted_at DESC, a.date DESC
         LIMIT 10
     """)
-    recent_submissions = [dict(r) for r in cursor.fetchall()]
+    recent_class_subs = [dict(r) for r in cursor.fetchall()]
+
+    # Recent Subject Submissions
+    cursor.execute("""
+        SELECT sa.id, sa.year, sa.date, sa.submitted_at, f.name as faculty_name,
+               'subject' as type,
+               (s.code || ' - ' || s.name || ' (' || sa.slot || ')') as title,
+               COUNT(sar.id) as student_count,
+               SUM(CASE WHEN sar.status = 'Present' THEN 1 ELSE 0 END) as present_count,
+               SUM(CASE WHEN sar.status = 'Absent' THEN 1 ELSE 0 END) as absent_count
+        FROM subject_attendance sa
+        JOIN subjects s ON sa.subject_id = s.id
+        LEFT JOIN faculty f ON sa.faculty_id = f.id
+        LEFT JOIN subject_attendance_records sar ON sa.id = sar.subject_attendance_id
+        GROUP BY sa.id
+        ORDER BY sa.submitted_at DESC, sa.date DESC
+        LIMIT 10
+    """)
+    recent_subj_subs = [dict(r) for r in cursor.fetchall()]
+
+    # Merge and sort recent submissions
+    all_recent = recent_class_subs + recent_subj_subs
+    all_recent.sort(key=lambda x: str(x.get('submitted_at') or x.get('date')), reverse=True)
+    recent_submissions = all_recent[:12]
 
     conn.close()
     return jsonify({

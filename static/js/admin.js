@@ -29,21 +29,27 @@ async function loadAdminDashboard() {
     const el4aids = document.getElementById('dash4thAidsStudents');
     if (el4aids) el4aids.textContent = yCounts['4th Year (AI-DS)'] || 0;
 
-    // Render Today's Status Cards for all active classes
+    // Render Today's Status Cards for all active classes with Coordinator names
     const statusContainer = document.getElementById('todayStatusCards');
     const classes = Object.keys(data.today_status || {});
     statusContainer.innerHTML = classes.map(yr => {
       const info = data.today_status[yr] || { status: 'Pending' };
       const isSubmitted = info.status === 'Submitted';
+      const isAi = yr.includes('AI');
 
       return `
         <div class="today-status-card">
           <div>
-            <div class="year-title">${yr}</div>
-            <div style="font-size: 12px; color: var(--slate-500); margin-top: 4px;">
-              ${isSubmitted ? `Submitted by ${info.faculty}` : 'Attendance not submitted yet'}
+            <div class="year-title" style="display: flex; align-items: center; gap: 6px;">
+              ${yr}
+              <span class="badge ${isAi ? 'badge-amber' : 'badge-sky'}" style="font-size: 10px; padding: 2px 6px;">${isAi ? 'AI-DS' : 'CSE'}</span>
             </div>
-            ${isSubmitted ? `<div style="font-size: 11px; color: var(--slate-400);">${info.submitted_at}</div>` : ''}
+            <div style="font-size: 12px; color: var(--slate-700); margin-top: 4px; font-weight: 500;">
+              <i data-lucide="user-check" style="width: 13px; height: 13px; display: inline-block; vertical-align: middle;"></i> Coordinator: <strong>${info.designated_coordinator || 'Assigned'}</strong>
+            </div>
+            <div style="font-size: 11px; color: var(--slate-500); margin-top: 2px;">
+              ${isSubmitted ? `Submitted at ${info.submitted_at || 'Today'}` : 'Attendance not submitted yet'}
+            </div>
           </div>
           <div>
             <span class="status-badge ${isSubmitted ? 'status-submitted' : 'status-pending'}">
@@ -62,22 +68,33 @@ async function loadAdminDashboard() {
     } else {
       tbody.innerHTML = data.recent_submissions.map(sub => `
         <tr>
-          <td><span class="count-pill">${sub.year}</span></td>
-          <td><strong>${sub.date}</strong></td>
+          <td>
+            <span class="badge ${sub.type === 'subject' ? 'badge-purple' : 'badge-indigo'}" style="font-size: 10px;">
+              ${sub.type === 'subject' ? 'Subject' : 'Class'}
+            </span>
+            <span style="font-size: 12px; margin-left: 4px; font-weight: 600;">${sub.year}</span>
+          </td>
+          <td>
+            <strong>${sub.date}</strong>
+            ${sub.title && sub.type === 'subject' ? `<div style="font-size: 11px; color: var(--slate-500); font-weight: 500;">${sub.title}</div>` : ''}
+          </td>
           <td>${sub.faculty_name || 'Faculty'}</td>
-          <td style="color: var(--slate-500);">${sub.submitted_at || '-'}</td>
+          <td style="color: var(--slate-500); font-size: 12px;">${sub.submitted_at ? sub.submitted_at.split(' ')[1] || sub.submitted_at : '-'}</td>
           <td>${sub.student_count || 0}</td>
           <td>
             <span class="status-badge status-submitted">${sub.present_count || 0} P</span>
             <span class="status-badge status-pending">${sub.absent_count || 0} A</span>
           </td>
           <td>
-            <button class="btn btn-outline btn-xs" onclick="openAttendanceEditModal(${sub.id}, '${sub.year}', '${sub.date}')">
-              <i data-lucide="edit-3"></i> View / Edit
-            </button>
+            ${sub.type === 'daily' ? `
+              <button class="btn btn-outline btn-xs" onclick="openAttendanceEditModal(${sub.id}, '${sub.year}', '${sub.date}')">
+                <i data-lucide="edit-3"></i> View / Edit
+              </button>
+            ` : `<span style="font-size: 11px; color: var(--slate-500);"><i data-lucide="check" style="width: 12px; height: 12px;"></i> Subject Log</span>`}
           </td>
         </tr>
       `).join('');
+    }
     }
 
     lucide.createIcons();
