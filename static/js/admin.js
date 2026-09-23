@@ -20,6 +20,8 @@ async function loadAdminDashboard() {
     if (el2) el2.textContent = yCounts['2nd Year (CSE)'] || yCounts['2nd Year'] || 0;
     const el3 = document.getElementById('dash3rdYearStudents');
     if (el3) el3.textContent = yCounts['3rd Year (CSE)'] || yCounts['3rd Year'] || 0;
+    const el3aids = document.getElementById('dash3rdAidsStudents');
+    if (el3aids) el3aids.textContent = yCounts['3rd Year (AI-DS)'] || 0;
     const el4 = document.getElementById('dash4thYearStudents');
     if (el4) el4.textContent = yCounts['4th Year (CSE)'] || yCounts['4th Year'] || 0;
     const el4aids = document.getElementById('dash4thAidsStudents');
